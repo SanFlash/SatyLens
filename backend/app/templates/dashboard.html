@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SatyLens — Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e1a; --card: #11172b; --border: #1f2a44; --border-hover: #2c3b5f;
+    --text: #e8ecf6; --text-dim: #8a92ab; --accent: #3b82f6; --accent-hover: #5b9bff;
+    --danger: #ef4444; --success: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    font-size: 13px;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: rgba(10,14,26,0.92); backdrop-filter: blur(8px); z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .logo { width: 22px; height: 22px; object-fit: contain; }
+  .brand h1 { font-size: 16px; margin: 0; }
+  .token-row { display: flex; align-items: center; gap: 8px; }
+  .token-row input {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 10px; border-radius: 8px; font-size: 12px; width: 200px;
+  }
+  .token-row button, .tab-btn {
+    background: var(--accent); border: none; color: #fff; font-weight: 600;
+    padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  }
+  main { padding: 24px; max-width: 1300px; margin: 0 auto; }
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px; margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+  }
+  .kpi-card .kpi-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
+  .kpi-card .kpi-value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .kpi-card .kpi-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .section-title { font-size: 14px; font-weight: 700; margin: 28px 0 12px; }
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+  .chart-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    height: 280px; display: flex; flex-direction: column;
+  }
+  .chart-card h3 { margin: 0 0 10px; font-size: 12.5px; color: var(--text-dim); font-weight: 700; }
+  .chart-card canvas { flex: 1; max-height: 220px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 700; text-transform: uppercase; font-size: 10.5px; }
+  tr:last-child td { border-bottom: none; }
+  tr.user-row { cursor: pointer; }
+  tr.user-row:hover { background: #161d33; }
+  .activity-feed { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+  .activity-item { display: flex; gap: 10px; padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+  .activity-item .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: var(--success); flex-shrink: 0; }
+  .activity-item.fail .dot { background: var(--danger); }
+  .activity-item .meta { color: var(--text-dim); font-size: 11px; }
+  #userDetailPanel {
+    background: var(--card); border: 1px solid var(--accent); border-radius: 12px; padding: 18px; margin-top: 16px; display: none;
+  }
+  #userDetailPanel h3 { margin: 0 0 10px; }
+  #userTimeline { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; max-height: 260px; overflow-y: auto; }
+  .timeline-row { display: flex; justify-content: space-between; font-size: 11.5px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .empty-note { color: var(--text-dim); font-size: 12px; text-align: center; padding: 30px; }
+  .close-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; float: right; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><img class="logo" src="/static/logo.png" alt="SatyLens" /><h1>SatyLens Analytics</h1></div>
+  <div class="token-row">
+    <input id="tokenInput" type="password" placeholder="Dashboard token (if configured)" />
+    <button id="loadBtn">Load</button>
+  </div>
+</header>
+
+<main>
+  <div id="authNote" class="empty-note" style="display:none;">
+    This server requires a dashboard token. Enter it above and click Load.
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="section-title">Trends (last 30 days)</div>
+    <div class="chart-grid">
+      <div class="chart-card"><h3>Daily Active Users</h3><canvas id="chartDau"></canvas></div>
+      <div class="chart-card"><h3>Screenshots / day</h3><canvas id="chartScreenshots"></canvas></div>
+      <div class="chart-card"><h3>Recordings / day</h3><canvas id="chartRecordings"></canvas></div>
+      <div class="chart-card"><h3>Uploads / day</h3><canvas id="chartUploads"></canvas></div>
+      <div class="chart-card"><h3>Errors / day</h3><canvas id="chartErrors"></canvas></div>
+      <div class="chart-card"><h3>Most used features</h3><canvas id="chartFeatures"></canvas></div>
+      <div class="chart-card"><h3>Extension version adoption</h3><canvas id="chartVersions"></canvas></div>
+    </div>
+
+    <div class="section-title">Recent activity</div>
+    <div class="activity-feed" id="activityFeed"></div>
+
+    <div class="section-title">Users</div>
+    <table>
+      <thead><tr><th>Client</th><th>First seen</th><th>Last seen</th><th>Sessions</th><th>Actions</th><th>Version</th></tr></thead>
+      <tbody id="usersTableBody"></tbody>
+    </table>
+
+    <div id="userDetailPanel">
+      <button class="close-btn" id="closeUserDetail">✕</button>
+      <h3 id="userDetailTitle"></h3>
+      <div class="kpi-grid" id="userDetailKpis"></div>
+      <div id="userTimeline"></div>
+    </div>
+  </div>
+</main>
+
+<footer style="text-align:center; color: var(--text-dim); font-size: 11.5px; padding: 20px;">
+  SatyLens Analytics · Created by Satyendra Kumar Namdeo
+</footer>
+
+<script>
+const charts = {};
+
+function authHeaders() {
+  const token = document.getElementById('tokenInput').value.trim();
+  return token ? { 'X-Analytics-Token': token } : {};
+}
+
+async function apiGet(path) {
+  const res = await fetch(path, { headers: authHeaders() });
+  if (res.status === 401) throw new Error('unauthorized');
+  if (!res.ok) throw new Error('Request failed: ' + res.status);
+  return res.json();
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderKpis(containerId, items) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = items.map(i => `
+    <div class="kpi-card">
+      <div class="kpi-label">${i.label}</div>
+      <div class="kpi-value">${i.value}</div>
+      ${i.sub ? `<div class="kpi-sub">${i.sub}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function lineChart(canvasId, labels, data, color) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{ data, borderColor: color, backgroundColor: color + '33', fill: true, tension: 0.3, pointRadius: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8a92ab', maxTicksLimit: 6 }, grid: { color: '#1f2a44' } },
+        y: { ticks: { color: '#8a92ab' }, grid: { color: '#1f2a44' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function barChart(canvasId, labels, data) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: '#3b82f6' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8a92ab' }, grid: { color: '#1f2a44' }, beginAtZero: true },
+        y: { ticks: { color: '#8a92ab' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+async function loadDashboard() {
+  document.getElementById('authNote').style.display = 'none';
+  try {
+    const overview = await apiGet('/api/analytics/overview?days=30');
+    document.getElementById('content').style.display = 'block';
+
+    renderKpis('kpiGrid', [
+      { label: 'Total users', value: overview.total_users },
+      { label: 'Active (daily)', value: overview.active_users.daily },
+      { label: 'Active (weekly)', value: overview.active_users.weekly },
+      { label: 'Active (monthly)', value: overview.active_users.monthly },
+      { label: 'Total sessions', value: overview.total_sessions },
+      { label: 'Screenshots', value: overview.screenshots_captured },
+      { label: 'Recordings', value: overview.screen_recordings },
+      { label: 'Uploads', value: overview.uploads },
+      { label: 'Links generated', value: overview.links_generated },
+      { label: 'Collages created', value: overview.collages_created },
+      { label: 'Failed operations', value: overview.failed_operations },
+    ]);
+
+    barChart('chartFeatures', overview.most_used_features.map(f => f.feature), overview.most_used_features.map(f => f.count));
+    barChart('chartVersions', overview.extension_versions.map(v => v.version), overview.extension_versions.map(v => v.count));
+
+    const [dau, screenshots, recordings, uploads, errors] = await Promise.all([
+      apiGet('/api/analytics/timeseries?metric=dau&days=30'),
+      apiGet('/api/analytics/timeseries?metric=screenshots&days=30'),
+      apiGet('/api/analytics/timeseries?metric=recordings&days=30'),
+      apiGet('/api/analytics/timeseries?metric=uploads&days=30'),
+      apiGet('/api/analytics/timeseries?metric=errors&days=30'),
+    ]);
+    const labels = dau.map(p => p.date.slice(5));
+    lineChart('chartDau', labels, dau.map(p => p.count), '#3b82f6');
+    lineChart('chartScreenshots', labels, screenshots.map(p => p.count), '#22c55e');
+    lineChart('chartRecordings', labels, recordings.map(p => p.count), '#f59e0b');
+    lineChart('chartUploads', labels, uploads.map(p => p.count), '#a855f7');
+    lineChart('chartErrors', labels, errors.map(p => p.count), '#ef4444');
+
+    const activity = await apiGet('/api/analytics/activity?limit=40');
+    document.getElementById('activityFeed').innerHTML = activity.length
+      ? activity.map(a => `
+        <div class="activity-item ${a.success ? '' : 'fail'}">
+          <span class="dot"></span>
+          <div>
+            <div>${a.event_type}${a.feature ? ' · ' + a.feature : ''}${a.action ? ' · ' + a.action : ''}</div>
+            <div class="meta">${a.client_id.slice(0, 8)}… — ${fmtDate(a.created_at)}</div>
+          </div>
+        </div>
+      `).join('')
+      : '<div class="empty-note">No activity recorded yet.</div>';
+
+    const users = await apiGet('/api/analytics/users?limit=50');
+    document.getElementById('usersTableBody').innerHTML = users.length
+      ? users.map(u => `
+        <tr class="user-row" data-id="${u.client_id}">
+          <td>${u.client_id.slice(0, 10)}…</td>
+          <td>${fmtDate(u.first_seen)}</td>
+          <td>${fmtDate(u.last_seen)}</td>
+          <td>${u.total_sessions}</td>
+          <td>${u.total_actions}</td>
+          <td>${u.extension_version || '—'}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="6" class="empty-note">No installations recorded yet.</td></tr>';
+
+    document.querySelectorAll('.user-row').forEach(row => {
+      row.addEventListener('click', () => loadUserDetail(row.dataset.id));
+    });
+  } catch (err) {
+    if (err.message === 'unauthorized') {
+      document.getElementById('authNote').style.display = 'block';
+      document.getElementById('content').style.display = 'none';
+    } else {
+      console.error(err);
+      alert('Failed to load dashboard: ' + err.message);
+    }
+  }
+}
+
+async function loadUserDetail(clientId) {
+  const detail = await apiGet('/api/analytics/user/' + encodeURIComponent(clientId));
+  const panel = document.getElementById('userDetailPanel');
+  panel.style.display = 'block';
+  document.getElementById('userDetailTitle').textContent = 'User ' + detail.client_id.slice(0, 12) + '…';
+  const kpiEl = document.getElementById('userDetailKpis');
+  kpiEl.innerHTML = '';
+  renderKpis('userDetailKpis', [
+    { label: 'First seen', value: fmtDate(detail.first_seen) },
+    { label: 'Last active', value: fmtDate(detail.last_seen) },
+    { label: 'Total sessions', value: detail.total_sessions },
+    { label: 'Total actions', value: detail.total_actions },
+    { label: 'Screenshots', value: detail.screenshots },
+    { label: 'Recordings', value: detail.screen_recordings },
+    { label: 'Uploads', value: detail.uploads },
+    { label: 'Links generated', value: detail.links_generated },
+  ]);
+  document.getElementById('userTimeline').innerHTML = detail.activity_timeline.length
+    ? detail.activity_timeline.map(e => `
+      <div class="timeline-row">
+        <span>${e.event_type}${e.feature ? ' · ' + e.feature : ''}${e.action ? ' · ' + e.action : ''}</span>
+        <span class="meta">${fmtDate(e.created_at)}</span>
+      </div>
+    `).join('')
+    : '<div class="empty-note">No activity yet.</div>';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+document.getElementById('closeUserDetail').addEventListener('click', () => {
+  document.getElementById('userDetailPanel').style.display = 'none';
+});
+document.getElementById('loadBtn').addEventListener('click', loadDashboard);
+
+loadDashboard();
+</script>
+</body>
+</html>

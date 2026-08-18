@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SatyLens Editor</title>
+<link rel="stylesheet" href="editor.css" />
+</head>
+<body>
+  <div class="ed-app">
+    <header class="ed-topbar">
+      <div class="ed-topbar-left">
+        <button id="closeBtn" class="ed-icon-btn" title="Close editor">✕</button>
+        <img class="ed-logo" src="../icons/icon48.png" alt="SatyLens" />
+        <input id="titleInput" class="ed-title-input" type="text" value="Untitled screenshot" />
+      </div>
+      <div class="ed-topbar-center">
+        <button id="undoBtn" class="ed-tbtn" title="Undo (Ctrl+Z)" disabled>↺</button>
+        <button id="redoBtn" class="ed-tbtn" title="Redo (Ctrl+Shift+Z)" disabled>↻</button>
+        <span class="ed-sep"></span>
+        <button id="zoomOutBtn" class="ed-tbtn" title="Zoom out">−</button>
+        <span id="zoomLabel" class="ed-zoom-label">100%</span>
+        <button id="zoomInBtn" class="ed-tbtn" title="Zoom in">+</button>
+        <button id="zoomFitBtn" class="ed-tbtn" title="Fit to screen">⤢</button>
+      </div>
+      <div class="ed-topbar-right">
+        <span id="statusLabel" class="ed-status"></span>
+        <button id="downloadBtn" class="ed-action-btn">Download</button>
+        <button id="saveBtn" class="ed-action-btn ed-primary">Save to Gallery</button>
+        <button id="shareBtn" class="ed-action-btn ed-accent">Create Share Link</button>
+      </div>
+    </header>
+
+    <div class="ed-body">
+      <!-- ============ LEFT TOOL RAIL ============ -->
+      <aside class="ed-tool-rail" id="toolRail">
+        <button class="ed-tool" data-tool="select" title="Select / Move (V)" aria-label="Select">
+          <span>⬚</span>
+        </button>
+        <div class="ed-tool-divider"></div>
+        <button class="ed-tool" data-tool="text" title="Text (T)" aria-label="Text"><span>T</span></button>
+        <button class="ed-tool" data-tool="arrow" title="Arrow (A)" aria-label="Arrow"><span>↗</span></button>
+        <button class="ed-tool" data-tool="line" title="Line (L)" aria-label="Line"><span>╱</span></button>
+        <button class="ed-tool" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle"><span>▭</span></button>
+        <button class="ed-tool" data-tool="roundrect" title="Rounded Rectangle" aria-label="Rounded Rectangle"><span>▢</span></button>
+        <button class="ed-tool" data-tool="circle" title="Circle / Ellipse (C)" aria-label="Circle"><span>◯</span></button>
+        <button class="ed-tool" data-tool="freehand" title="Freehand Draw (P)" aria-label="Freehand"><span>✎</span></button>
+        <div class="ed-tool-divider"></div>
+        <button class="ed-tool" data-tool="highlight" title="Highlight (H)" aria-label="Highlight"><span>▮</span></button>
+        <button class="ed-tool" data-tool="blur" title="Blur sensitive area" aria-label="Blur"><span>◌</span></button>
+        <button class="ed-tool" data-tool="pixelate" title="Pixelate sensitive area" aria-label="Pixelate"><span>▦</span></button>
+        <div class="ed-tool-divider"></div>
+        <button class="ed-tool" data-tool="crop" title="Crop (X)" aria-label="Crop"><span>⛶</span></button>
+        <button id="importBtn" class="ed-tool" title="Import image / SVG asset" aria-label="Import"><span>⇪</span></button>
+        <input id="importInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="ed-hidden" />
+      </aside>
+
+      <!-- ============ CANVAS AREA ============ -->
+      <main class="ed-canvas-wrap" id="canvasWrap">
+        <div class="ed-canvas-scroll" id="canvasScroll">
+          <div class="ed-canvas-stage" id="canvasStage">
+            <canvas id="editorCanvas"></canvas>
+            <textarea id="textEditOverlay" class="ed-text-overlay ed-hidden" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </main>
+
+      <!-- ============ RIGHT PROPERTY / LAYERS PANEL ============ -->
+      <aside class="ed-side-panel">
+        <div class="ed-panel-tabs">
+          <button class="ed-panel-tab active" data-panel="properties">Properties</button>
+          <button class="ed-panel-tab" data-panel="layers">Layers</button>
+        </div>
+
+        <div id="panelProperties" class="ed-panel-content">
+          <div id="propEmpty" class="ed-prop-empty">Select a tool or an object to see its properties.</div>
+
+          <div id="propText" class="ed-prop-group ed-hidden">
+            <label>Font</label>
+            <select id="fontFamily">
+              <option value="Segoe UI, sans-serif">Segoe UI</option>
+              <option value="Arial, sans-serif">Arial</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="'Courier New', monospace">Courier New</option>
+              <option value="'Comic Sans MS', cursive">Comic Sans</option>
+            </select>
+            <label>Size</label>
+            <input id="fontSize" type="range" min="10" max="96" value="24" />
+            <div class="ed-btn-toggle-row">
+              <button id="fontBold" class="ed-toggle-btn" data-style="bold"><b>B</b></button>
+              <button id="fontItalic" class="ed-toggle-btn" data-style="italic"><i>I</i></button>
+              <button id="fontUnderline" class="ed-toggle-btn" data-style="underline"><u>U</u></button>
+              <span class="ed-mini-sep"></span>
+              <button id="alignLeft" class="ed-toggle-btn" data-align="left">⟸</button>
+              <button id="alignCenter" class="ed-toggle-btn" data-align="center">⟺</button>
+              <button id="alignRight" class="ed-toggle-btn" data-align="right">⟹</button>
+            </div>
+            <label>Text color</label>
+            <input id="textColor" type="color" value="#ffffff" />
+            <label>Background</label>
+            <input id="textBgColor" type="color" value="#000000" />
+            <label>Background opacity</label>
+            <input id="textBgOpacity" type="range" min="0" max="100" value="0" />
+          </div>
+
+          <div id="propShape" class="ed-prop-group ed-hidden">
+            <label>Stroke color</label>
+            <input id="strokeColor" type="color" value="#ff3b30" />
+            <label>Stroke width</label>
+            <input id="strokeWidth" type="range" min="1" max="24" value="4" />
+            <label>Fill color</label>
+            <input id="fillColor" type="color" value="#ff3b30" />
+            <label>Fill opacity</label>
+            <input id="fillOpacity" type="range" min="0" max="100" value="0" />
+            <label id="cornerRadiusLabel" class="ed-hidden">Corner radius</label>
+            <input id="cornerRadius" type="range" min="0" max="60" value="12" class="ed-hidden" />
+            <label class="ed-checkbox-label"><input id="shadowToggle" type="checkbox" /> Drop shadow</label>
+          </div>
+
+          <div id="propHighlight" class="ed-prop-group ed-hidden">
+            <label>Highlight color</label>
+            <input id="highlightColor" type="color" value="#ffeb3b" />
+            <label>Opacity</label>
+            <input id="highlightOpacity" type="range" min="10" max="100" value="45" />
+            <label class="ed-checkbox-label"><input id="highlightSolid" type="checkbox" /> Solid (opaque) highlight</label>
+          </div>
+
+          <div id="propRedact" class="ed-prop-group ed-hidden">
+            <label>Intensity</label>
+            <input id="redactIntensity" type="range" min="1" max="20" value="8" />
+            <p class="ed-hint">Drag over passwords, emails, API keys, or any sensitive info to hide it.</p>
+          </div>
+
+          <div id="propObjectActions" class="ed-prop-group ed-hidden">
+            <label>Selected object</label>
+            <div class="ed-btn-row">
+              <button id="dupBtn" class="ed-mini-btn">Duplicate</button>
+              <button id="delBtn" class="ed-mini-btn ed-danger">Delete</button>
+            </div>
+            <div class="ed-btn-row">
+              <button id="bringFrontBtn" class="ed-mini-btn">To Front</button>
+              <button id="sendBackBtn" class="ed-mini-btn">To Back</button>
+            </div>
+            <div class="ed-btn-row">
+              <button id="bringFwdBtn" class="ed-mini-btn">Forward</button>
+              <button id="sendBwdBtn" class="ed-mini-btn">Backward</button>
+            </div>
+          </div>
+
+          <div id="propCrop" class="ed-prop-group ed-hidden">
+            <p class="ed-hint">Drag on the canvas to select the crop area, then apply.</p>
+            <div class="ed-btn-row">
+              <button id="applyCropBtn" class="ed-mini-btn ed-primary-mini">Apply Crop</button>
+              <button id="cancelCropBtn" class="ed-mini-btn">Cancel</button>
+            </div>
+          </div>
+
+          <div class="ed-prop-group">
+            <label>Canvas</label>
+            <div class="ed-btn-row">
+              <button id="rotateLeftBtn" class="ed-mini-btn">⟲ Rotate</button>
+              <button id="rotateRightBtn" class="ed-mini-btn">⟳ Rotate</button>
+            </div>
+            <button id="resizeBtn" class="ed-mini-btn ed-full-width">Resize Image…</button>
+          </div>
+        </div>
+
+        <div id="panelLayers" class="ed-panel-content ed-hidden">
+          <div id="layersList" class="ed-layers-list"></div>
+          <div id="layersEmpty" class="ed-prop-empty">No annotations yet.</div>
+        </div>
+      </aside>
+    </div>
+    <footer class="ed-footer">Created by Satyendra Kumar Namdeo</footer>
+  </div>
+
+  <!-- ============ Resize dialog ============ -->
+  <div id="resizeOverlay" class="ed-modal-overlay ed-hidden">
+    <div class="ed-modal">
+      <h3>Resize Image</h3>
+      <label>Width (px)</label>
+      <input id="resizeWidth" type="number" min="1" />
+      <label>Height (px)</label>
+      <input id="resizeHeight" type="number" min="1" />
+      <label class="ed-checkbox-label"><input id="resizeLockAspect" type="checkbox" checked /> Lock aspect ratio</label>
+      <div class="ed-btn-row">
+        <button id="resizeApplyBtn" class="ed-mini-btn ed-primary-mini">Apply</button>
+        <button id="resizeCancelBtn" class="ed-mini-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Share result ============ -->
+  <div id="shareOverlay" class="ed-modal-overlay ed-hidden">
+    <div class="ed-modal">
+      <h3>Upload Complete ✓</h3>
+      <p id="shareModalText" class="ed-hint">File uploaded successfully.</p>
+      <div class="ed-share-result">
+        <input id="shareUrlInput" type="text" readonly />
+      </div>
+      <div class="ed-btn-row">
+        <button id="copyShareUrlBtn" class="ed-mini-btn ed-primary-mini">Copy Link</button>
+        <button id="openShareUrlBtn" class="ed-mini-btn">Open Link</button>
+      </div>
+      <button id="shareCloseBtn" class="ed-mini-btn ed-full-width">Close</button>
+    </div>
+  </div>
+
+  <div id="toast" class="ed-toast ed-hidden"></div>
+
+  <script type="module" src="editor.js"></script>
+</body>
+</html>
