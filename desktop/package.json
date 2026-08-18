@@ -1,0 +1,61 @@
+{
+  "name": "satylens-desktop",
+  "version": "1.0.0",
+  "description": "SatyLens desktop app \u2014 screenshot, screen recording, and sharing without needing Chrome.",
+  "main": "src/main.js",
+  "author": "Satyendra Kumar Namdeo",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:novideo": "electron . --no-sandbox",
+    "build:linux": "electron-builder --linux AppImage deb",
+    "build:win": "electron-builder --win nsis",
+    "build:mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "build": {
+    "appId": "com.satylens.desktop",
+    "productName": "SatyLens",
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "!renderer/**/*.md"
+    ],
+    "directories": {
+      "output": "dist-build",
+      "buildResources": "build"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

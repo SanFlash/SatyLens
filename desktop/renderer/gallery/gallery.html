@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SatyLens Gallery</title>
+<link rel="stylesheet" href="gallery.css" />
+</head>
+<body>
+  <script>window.chrome = window.__chromeShim;</script>
+  <header class="cf-gheader">
+    <div class="cf-gbrand">
+      <img class="cf-logo" src="../icons/icon48.png" alt="SatyLens" />
+      <h1>SatyLens Gallery</h1>
+    </div>
+    <div class="cf-gheader-actions">
+      <button id="linkHistoryBtn" class="cf-icon-btn" title="Link History">🔗</button>
+      <button id="settingsBtn" class="cf-icon-btn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <div class="cf-toolbar-row">
+    <div class="cf-tabs">
+      <button class="cf-tab active" data-filter="all">All</button>
+      <button class="cf-tab" data-filter="screenshot">Screenshots</button>
+      <button class="cf-tab" data-filter="recording">Recordings</button>
+    </div>
+    <input id="searchInput" class="cf-search" type="search" placeholder="Search captures..." />
+    <select id="sortSelect" class="cf-sort">
+      <option value="newest">Newest</option>
+      <option value="oldest">Oldest</option>
+      <option value="largest">Largest</option>
+      <option value="smallest">Smallest</option>
+    </select>
+  </div>
+
+  <main id="grid" class="cf-grid"></main>
+  <div id="emptyState" class="cf-empty cf-hidden">
+    <p>No captures yet.</p>
+    <p class="cf-empty-sub">Take a screenshot or start a recording from the SatyLens popup.</p>
+  </div>
+
+  <footer class="cf-footer">Created by Satyendra Kumar Namdeo</footer>
+
+  <!-- ============ Detail modal ============ -->
+  <div id="modalOverlay" class="cf-modal-overlay cf-hidden">
+    <div class="cf-modal">
+      <button id="modalClose" class="cf-modal-close" aria-label="Close">✕</button>
+      <div class="cf-modal-preview" id="modalPreview"></div>
+      <div class="cf-modal-info">
+        <h2 id="modalName"></h2>
+        <div class="cf-modal-meta" id="modalMeta"></div>
+        <div id="modalUploadStatus" class="cf-upload-status"></div>
+        <div class="cf-action-grid">
+          <button id="mCopy" class="cf-action-btn">Copy</button>
+          <button id="mDownload" class="cf-action-btn">Download</button>
+          <button id="mEdit" class="cf-action-btn">Edit</button>
+          <button id="mShare" class="cf-action-btn cf-accent">Create Share Link</button>
+          <button id="mDelete" class="cf-action-btn cf-danger">Delete</button>
+        </div>
+        <div id="mShareResult" class="cf-share-result cf-hidden">
+          <input id="mShareUrlInput" type="text" readonly />
+          <button id="mCopyShareUrl">Copy</button>
+          <button id="mOpenShareUrl">Open</button>
+        </div>
+        <div id="mUploadProgress" class="cf-progress cf-hidden">
+          <div id="mUploadProgressBar" class="cf-progress-bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Settings modal ============ -->
+  <div id="settingsOverlay" class="cf-modal-overlay cf-hidden">
+    <div class="cf-modal cf-modal-narrow">
+      <button id="settingsClose" class="cf-modal-close" aria-label="Close">✕</button>
+      <h2>Settings</h2>
+
+      <label class="cf-field-label">Upload destination</label>
+      <div class="cf-radio-row">
+        <label class="cf-radio-label"><input type="radio" name="uploadDest" value="backend" checked /> Backend server</label>
+        <label class="cf-radio-label"><input type="radio" name="uploadDest" value="drive" /> Google Drive</label>
+        <label class="cf-radio-label"><input type="radio" name="uploadDest" value="r2" /> Cloudflare R2</label>
+      </div>
+      <p class="cf-hint">Used by every "Create Share Link" button — popup, gallery, and editor.</p>
+
+      <label class="cf-field-label" for="apiBaseInput">Backend API base URL</label>
+      <input id="apiBaseInput" type="text" class="cf-text-input" placeholder="https://satylens.onrender.com" />
+
+      <div class="cf-settings-divider"></div>
+
+      <label class="cf-field-label">Google Drive</label>
+      <div id="driveDisconnected">
+        <p class="cf-hint">Connect a Google account to upload captures straight to Drive and generate a shareable link.</p>
+        <button id="connectDriveBtn" class="cf-primary-btn">Connect Google Drive</button>
+      </div>
+      <div id="driveConnected" class="cf-hidden">
+        <p class="cf-hint">Connected as <strong id="driveAccountEmail"></strong></p>
+        <label class="cf-field-label">Upload folder</label>
+        <select id="driveFolderSelect" class="cf-text-input"></select>
+        <div class="cf-btn-row-settings">
+          <button id="createFolderBtn" class="cf-mini-settings-btn">New folder</button>
+          <button id="disconnectDriveBtn" class="cf-mini-settings-btn cf-danger-settings">Disconnect</button>
+        </div>
+        <p class="cf-hint">Uploading to: <strong id="driveFolderLabel"></strong>. Files are shared as "anyone with the link can view".</p>
+      </div>
+
+      <button id="saveSettingsBtn" class="cf-primary-btn">Save</button>
+      <div id="settingsStatus" class="cf-hint"></div>
+
+      <div class="cf-settings-divider"></div>
+
+      <label class="cf-field-label">Analytics</label>
+      <label class="cf-checkbox-label"><input type="checkbox" id="analyticsToggle" checked /> Share anonymous usage analytics</label>
+      <p class="cf-hint">
+        Helps us see which features are used and how often. Never includes page content, URLs you've visited, or anything that identifies you personally — see
+        <a href="#" id="privacyInfoLink" style="color: var(--accent);">what's collected</a>.
+      </p>
+      <button id="clearTelemetryBtn" class="cf-mini-settings-btn">Clear local telemetry data</button>
+    </div>
+  </div>
+
+  <!-- ============ Link History modal (Cloudflare R2 links) ============ -->
+  <div id="linkHistoryOverlay" class="cf-modal-overlay cf-hidden">
+    <div class="cf-modal cf-modal-narrow cf-modal-tall">
+      <button id="linkHistoryClose" class="cf-modal-close" aria-label="Close">✕</button>
+      <h2>Link History</h2>
+      <p class="cf-hint">Recent Cloudflare R2 share links from this installation.</p>
+      <div id="linkHistoryList" class="cf-link-history-list"></div>
+      <div id="linkHistoryEmpty" class="cf-empty cf-hidden"><p>No R2 share links yet.</p></div>
+    </div>
+  </div>
+
+  <div id="toast" class="cf-toast cf-hidden"></div>
+
+  <script type="module" src="gallery.js"></script>
+</body>
+</html>
