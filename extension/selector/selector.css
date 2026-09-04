@@ -1,0 +1,80 @@
+/* extension/selector/selector.css */
+/* Injected on every page (content script) but stays inert/invisible
+   until SatyLens activates the overlay via postMessage/DOM toggle. */
+
+#satylens-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  cursor: crosshair;
+  background: rgba(4, 8, 20, 0.35);
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#satylens-overlay-root.cf-hidden {
+  display: none;
+}
+
+.cf-selection-box {
+  position: absolute;
+  border: 2px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 4000px rgba(4, 8, 20, 0.45);
+  display: none;
+}
+
+.cf-dims-label {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.cf-toolbar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0b1220;
+  border: 1px solid #1f2a44;
+  color: #e8ecf6;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.cf-toolbar button {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.cf-btn-cancel {
+  background: #1f2a44;
+  color: #e8ecf6;
+}
+
+.cf-btn-capture {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.cf-btn-capture:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

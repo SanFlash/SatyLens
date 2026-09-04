@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SatyLens — Record</title>
+<link rel="stylesheet" href="recorder.css" />
+</head>
+<body>
+  <script>window.chrome = window.__chromeShim;</script>
+  <div class="cf-recorder">
+    <header>
+      <img class="cf-logo" src="../icons/icon48.png" alt="SatyLens" />
+      <h1>SatyLens Recorder</h1>
+    </header>
+
+    <!-- ============ SETUP ============ -->
+    <section id="viewSetup" class="cf-panel">
+      <p id="modeLabel" class="cf-mode-label"></p>
+
+      <div class="cf-toggles">
+        <label class="cf-toggle">
+          <input type="checkbox" id="micToggle" />
+          <span>🎙️ Microphone</span>
+        </label>
+        <label class="cf-toggle">
+          <input type="checkbox" id="audioToggle" />
+          <span>🔊 System Audio</span>
+        </label>
+      </div>
+
+      <p class="cf-hint" id="audioHint"></p>
+
+      <button id="startBtn" class="cf-primary-btn">● Start Recording</button>
+      <div id="setupError" class="cf-error cf-hidden"></div>
+    </section>
+
+    <!-- ============ RECORDING ============ -->
+    <section id="viewRecording" class="cf-panel cf-hidden">
+      <div class="cf-live-indicator">
+        <span class="cf-dot"></span>
+        <span id="stateLabel">Recording</span>
+      </div>
+      <div id="timer" class="cf-timer">00:00:00</div>
+      <video id="livePreview" class="cf-live-video" autoplay muted></video>
+      <div class="cf-btn-row">
+        <button id="pauseBtn" class="cf-secondary-btn">Pause</button>
+        <button id="stopBtn" class="cf-danger-btn">■ Stop</button>
+      </div>
+    </section>
+
+    <!-- ============ PREVIEW / DONE ============ -->
+    <section id="viewDone" class="cf-panel cf-hidden">
+      <video id="resultVideo" class="cf-result-video" controls></video>
+      <div class="cf-meta-row">
+        <span id="metaDuration"></span>
+        <span id="metaSize"></span>
+        <span id="metaFormat"></span>
+      </div>
+      <div class="cf-action-grid">
+        <button id="btnDownload" class="cf-action-btn">Download</button>
+        <button id="btnSave" class="cf-action-btn cf-primary">Save to Gallery</button>
+        <button id="btnShare" class="cf-action-btn cf-accent">Create Share Link</button>
+        <button id="btnDelete" class="cf-action-btn cf-danger">Discard</button>
+      </div>
+      <div id="shareResult" class="cf-share-result cf-hidden">
+        <input id="shareUrlInput" type="text" readonly />
+        <button id="copyShareUrl">Copy Link</button>
+      </div>
+      <div id="uploadProgress" class="cf-progress cf-hidden">
+        <div id="uploadProgressBar" class="cf-progress-bar"></div>
+      </div>
+      <a id="galleryLink" href="#">Open Gallery →</a>
+    </section>
+
+    <div id="toast" class="cf-toast cf-hidden"></div>
+    <p class="cf-footer">Created by Satyendra Kumar Namdeo</p>
+  </div>
+
+  <script type="module" src="recorder.js"></script>
+</body>
+</html>

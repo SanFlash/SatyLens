@@ -1,0 +1,69 @@
+# Render Blueprint for the SatyLens backend.
+#
+# Deploy: Render dashboard -> New + -> Blueprint -> connect this repo.
+# Render reads this file automatically and provisions the service below.
+#
+# You'll be prompted for exactly three values during setup (everything
+# else has a working default or is genuinely optional):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ALLOWED_EXTENSION_ORIGINS
+#
+# You do NOT need to set PUBLIC_BASE_URL: the backend auto-detects its
+# own https://*.onrender.com URL from Render's RENDER_EXTERNAL_URL
+# variable (see app/config.py:effective_public_base_url) and share links
+# work immediately after first deploy. Only set PUBLIC_BASE_URL yourself
+# if you're pointing a custom domain at this service.
+#
+# Free-tier note: Render's free web services spin down after 15 minutes
+# of inactivity and take ~30-50s to wake on the next request. A share
+# link opened right after idle time will feel slow the first time, then
+# be fast again. Upgrade to a paid plan (or ping the service periodically
+# with an external uptime monitor) if that matters for your use case.
+
+services:
+  - type: web
+    name: satylens-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # --- Required: prompted during Blueprint setup ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ALLOWED_EXTENSION_ORIGINS
+        sync: false
+
+      # --- Pinned for a reproducible build ---
+      - key: PYTHON_VERSION
+        value: 3.12.3
+
+      # --- Sensible defaults; override in the Render dashboard any time ---
+      - key: SUPABASE_BUCKET
+        value: captures
+      - key: MAX_FILE_SIZE_MB
+        value: "100"
+      - key: R2_PRESIGNED_UPLOAD_EXPIRY
+        value: "900"
+      - key: R2_PRESIGNED_DOWNLOAD_EXPIRY
+        value: "3600"
+
+      # --- Optional: leave unset unless you need them ---
+      - key: EXTRA_CORS_ORIGINS
+        sync: false
+      - key: ANALYTICS_DASHBOARD_TOKEN
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
