@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SatyLens</title>
+<link rel="stylesheet" href="home.css" />
+</head>
+<body>
+  <script>window.chrome = window.__chromeShim;</script>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <img class="logo" src="../icons/icon48.png" alt="SatyLens" />
+        <div>
+          <h1>SatyLens</h1>
+          <p class="subtitle">Capture. Record. Share.</p>
+        </div>
+      </div>
+      <button id="galleryBtn" class="icon-btn" title="Open Gallery" aria-label="Open Gallery">⧉</button>
+    </header>
+
+    <section id="viewHome" class="view">
+      <div class="section">
+        <div class="section-title">📸 Screenshot</div>
+        <div class="btn-row">
+          <button class="option-btn" data-action="capture-screen">Capture Screen</button>
+          <button class="option-btn" data-action="capture-window">Capture Window</button>
+          <button class="option-btn" data-action="select-area">Select Area</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🎥 Record</div>
+        <div class="btn-row">
+          <button class="option-btn" data-action="record-screen">Record Screen</button>
+          <button class="option-btn" data-action="record-window">Record Window</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title-row">
+          <span class="section-title">Recent Captures</span>
+          <a id="viewGalleryLink" href="#">View Gallery →</a>
+        </div>
+        <div id="recentList" class="recent-list">
+          <div class="empty-small">No captures yet — try a screenshot!</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="viewPreview" class="view hidden">
+      <button class="back-btn" id="backFromPreview">← Back</button>
+      <div class="preview-frame">
+        <img id="previewImg" alt="Screenshot preview" />
+      </div>
+      <div id="previewStatus" class="status"></div>
+      <div class="action-grid">
+        <button id="btnCopy" class="action-btn">Copy</button>
+        <button id="btnDownload" class="action-btn">Download</button>
+        <button id="btnEdit" class="action-btn">Edit</button>
+        <button id="btnSave" class="action-btn primary">Save to Gallery</button>
+        <button id="btnShare" class="action-btn accent">Create Share Link</button>
+        <button id="btnDelete" class="action-btn danger">Delete</button>
+      </div>
+      <div id="shareResult" class="share-result hidden">
+        <input id="shareUrlInput" type="text" readonly />
+        <button id="copyShareUrl">Copy Link</button>
+      </div>
+    </section>
+
+    <!-- ============ Source picker (screen/window selection) ============ -->
+    <section id="viewPicker" class="view hidden">
+      <button class="back-btn" id="backFromPicker">← Back</button>
+      <div class="section-title" id="pickerTitle">Choose a source</div>
+      <div id="pickerGrid" class="picker-grid"></div>
+    </section>
+
+    <footer class="footer">Created by Satyendra Kumar Namdeo</footer>
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <!-- Hidden capture surface: a video element used to grab frames from
+       getUserMedia streams, and a canvas to turn a frame into a PNG blob. -->
+  <video id="captureVideo" class="offscreen" autoplay muted playsinline></video>
+  <canvas id="captureCanvas" class="offscreen"></canvas>
+
+  <script type="module" src="home.js"></script>
+</body>
+</html>

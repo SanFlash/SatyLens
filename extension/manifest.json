@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "SatyLens",
+  "version": "1.6.0",
+  "description": "Capture. Record. Share. Screenshots and screen recordings straight from Chrome.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAynWWb3vyqnlH8GDctVkd030x8Z5DgmdsQOjOj/+rpaP+BajdoLmpn5FfyG+2y1SJdpU//an+/hcVH/XrqwEXTIdx1oHdqVXLK/B18B6lXxLdwy5A9kiAQHEf+yeO+MIckg+zdKOkTXynQuNLm67bJPEsZGbCukmfx0I1Sb8trtHpPO8Z9y7VUB1qbTJAcQxTt/n2Uim99PS9HrALtKFAcj6fUv2fQ5QO4fRssCefEmLU0zsqXqBgYoYLExFrUMd1ru8+lF1+0+ntzZk5lq5Vb7OA8kYNtjIrMmAi1zaB+u6rYpRJyEdLlp+GA2OBKykndGTgSYxpOfNv4H2Osm7dlwIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting",
+    "clipboardWrite",
+    "downloads",
+    "notifications",
+    "desktopCapture",
+    "tabCapture",
+    "identity"
+  ],
+  "oauth2": {
+    "client_id": "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://*/*"
+  ],
+  "commands": {
+    "capture-visible-tab": {
+      "suggested_key": { "default": "Ctrl+Shift+S", "mac": "Command+Shift+S" },
+      "description": "Capture visible tab screenshot"
+    },
+    "toggle-recording": {
+      "suggested_key": { "default": "Ctrl+Shift+R", "mac": "Command+Shift+R" },
+      "description": "Start or stop screen recording"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["selector/selector.js"],
+      "css": ["selector/selector.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["recorder/recorder.html", "gallery/gallery.html", "editor/editor.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
+

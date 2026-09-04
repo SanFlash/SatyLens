@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SatyLens</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="cf-app">
+    <header class="cf-header">
+      <div class="cf-brand">
+        <img class="cf-logo" src="../icons/icon48.png" alt="SatyLens" />
+        <div>
+          <h1>SatyLens</h1>
+          <p class="cf-subtitle">Capture. Record. Share.</p>
+        </div>
+      </div>
+      <button id="galleryBtn" class="cf-icon-btn" title="Open Gallery" aria-label="Open Gallery">⧉</button>
+    </header>
+
+    <!-- ============ HOME VIEW ============ -->
+    <section id="viewHome" class="cf-view">
+      <div class="cf-section">
+        <div class="cf-section-title">📸 Screenshot</div>
+        <div class="cf-btn-row">
+          <button class="cf-option-btn" data-action="visible-tab">Visible Tab</button>
+          <button class="cf-option-btn" data-action="full-page">Full Page</button>
+          <button class="cf-option-btn" data-action="select-area">Select Area</button>
+        </div>
+      </div>
+
+      <div class="cf-section">
+        <div class="cf-section-title">🎥 Record Screen</div>
+        <div class="cf-btn-row">
+          <button class="cf-option-btn" data-action="record-tab">Record Tab</button>
+          <button class="cf-option-btn" data-action="record-screen">Record Screen</button>
+          <button class="cf-option-btn" data-action="record-window">Record Window</button>
+        </div>
+      </div>
+
+      <div class="cf-section">
+        <div class="cf-section-title-row">
+          <span class="cf-section-title">Recent Captures</span>
+          <a id="viewGalleryLink" href="#">View Gallery →</a>
+        </div>
+        <div id="recentList" class="cf-recent-list">
+          <div class="cf-empty-small">No captures yet — try a screenshot!</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PREVIEW VIEW (visible-tab screenshot) ============ -->
+    <section id="viewPreview" class="cf-view cf-hidden">
+      <button class="cf-back-btn" id="backFromPreview">← Back</button>
+      <div class="cf-preview-frame">
+        <img id="previewImg" alt="Screenshot preview" />
+      </div>
+      <div id="previewStatus" class="cf-status"></div>
+      <div class="cf-action-grid">
+        <button id="btnCopy" class="cf-action-btn">Copy</button>
+        <button id="btnDownload" class="cf-action-btn">Download</button>
+        <button id="btnEdit" class="cf-action-btn">Edit</button>
+        <button id="btnSave" class="cf-action-btn cf-primary">Save to Gallery</button>
+        <button id="btnShare" class="cf-action-btn cf-accent">Create Share Link</button>
+        <button id="btnDelete" class="cf-action-btn cf-danger">Delete</button>
+      </div>
+      <div id="shareResult" class="cf-share-result cf-hidden">
+        <input id="shareUrlInput" type="text" readonly />
+        <button id="copyShareUrl">Copy Link</button>
+      </div>
+    </section>
+
+    <footer class="cf-footer">Created by Satyendra Kumar Namdeo</footer>
+
+    <div id="toast" class="cf-toast cf-hidden"></div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
