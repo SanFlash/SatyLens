@@ -6,6 +6,7 @@
 import { CaptureStore } from '../shared/storage.js';
 import { copyTextToClipboard } from '../shared/clipboard.js';
 import { createShareLink, getUploadDestination } from '../shared/share.js';
+import { mountShareSecurityControls } from '../shared/share-security-ui.js';
 import { track } from '../shared/analytics.js';
 import { uuid, timestampForFilename, generateImageThumbnail } from '../shared/utils.js';
 
@@ -1596,9 +1597,20 @@ async function onCreateShareLink() {
     $('#shareUrlInput').value = shareUrl;
     $('#shareOverlay').classList.remove('ed-hidden');
     chrome.runtime.sendMessage({ action: 'GALLERY_UPDATED' }).catch(() => {});
+
+    const shareResultEl = document.querySelector('.ed-share-result');
+    const existingControls = shareResultEl.querySelector('.cf-share-security-mount');
+    if (existingControls) existingControls.remove();
+    if (destination !== 'drive') {
+      const shareId = shareUrl.split('/').filter(Boolean).pop();
+      const mount = mountShareSecurityControls(shareResultEl, shareId, showToast);
+      mount.classList.add('cf-share-security-mount');
+    }
   } catch (err) {
-    console.error(err);
-    showToast(err.message || 'Upload failed. Your screenshot is safely stored locally.', true);
+    if (!err.userCanceled) {
+      console.error(err);
+      showToast(err.message || 'Upload failed. Your screenshot is safely stored locally.', true);
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = originalLabel;

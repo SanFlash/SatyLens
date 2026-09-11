@@ -41,3 +41,28 @@ class ShareInfoResponse(BaseModel):
     duration_seconds: float
     created_at: datetime
     file_url: str
+
+
+class SetSharePasswordRequest(BaseModel):
+    # None/empty clears password protection; any non-empty string sets/replaces it.
+    password: Optional[str] = None
+
+
+class SignedUploadUrlRequest(BaseModel):
+    file_name: str
+    content_type: str
+    media_type: CaptureType
+    client_id: Optional[str] = None
+
+
+class SignedUploadUrlResponse(BaseModel):
+    success: bool
+    id: str
+    signed_url: str
+    token: str
+    storage_path: str
+
+
+class CompleteSignedUploadRequest(BaseModel):
+    id: str
+    duration_seconds: float = 0

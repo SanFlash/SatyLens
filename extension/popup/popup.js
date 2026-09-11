@@ -2,6 +2,7 @@
 import { CaptureStore } from '../shared/storage.js';
 import { copyImageBlobToClipboard, copyTextToClipboard } from '../shared/clipboard.js';
 import { createShareLink } from '../shared/share.js';
+import { mountShareSecurityControls } from '../shared/share-security-ui.js';
 import { dataUrlToBlob, timestampForFilename, formatBytes, generateImageThumbnail } from '../shared/utils.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -220,16 +221,33 @@ async function onShare() {
     btn.disabled = true;
     btn.textContent = 'Uploading…';
     const capture = await CaptureStore.get(currentCapture.id);
-    const { shareUrl } = await createShareLink(capture, (loaded, total) => {
+    const { shareUrl, destination } = await createShareLink(capture, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       btn.textContent = `Uploading… ${pct}%`;
     });
     shareUrlInput.value = shareUrl;
     shareResult.classList.remove('cf-hidden');
     showToast('Share link created 🔗', 'success');
+
+    // Password/expiration are backend-side controls -- only meaningful
+    // for links our own backend serves (backend or R2 destinations).
+    // Google Drive links are Google's own; we have no way to gate them.
+    const existingControls = shareResult.querySelector('.cf-share-security-mount');
+    if (existingControls) existingControls.remove();
+    if (destination !== 'drive') {
+      const shareId = shareUrl.split('/').filter(Boolean).pop();
+      const mount = mountShareSecurityControls(shareResult, shareId, (msg, isError) =>
+        showToast(msg, isError ? 'error' : 'success')
+      );
+      mount.classList.add('cf-share-security-mount');
+    }
   } catch (err) {
-    console.error(err);
-    showToast(err.message || 'Upload failed. Your capture is safely stored locally.', 'error');
+    if (err.userCanceled) {
+      // The user declined the large-file warning -- not a failure, nothing to alarm them about.
+    } else {
+      console.error(err);
+      showToast(err.message || 'Upload failed. Your capture is safely stored locally.', 'error');
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = 'Create Share Link';

@@ -21,7 +21,31 @@ export async function setUploadDestination(dest) {
   return ConfigStore.set('uploadDestination', dest);
 }
 
-function pad(n) {
+// Mirrors backend/app/config.py's Settings.max_direct_upload_warn_bytes --
+// NOTE: as of the direct-to-Supabase-storage upload flow (see api.js's
+// uploadCapture), the 'backend' destination no longer has the specific
+// double-network-hop + full-file-in-server-memory problem this constant
+// used to warn about -- both the backend and R2 destinations now upload
+// directly from the browser to storage. Kept here (unused by the
+// warning below, which now always returns null) as a historical
+// pointer in case a future destination reintroduces that constraint.
+const LARGE_DIRECT_UPLOAD_WARN_BYTES = 200 * 1024 * 1024;
+
+/**
+ * Historically warned before a large 'backend'-destination upload,
+ * since that path used to route the full file through this extension's
+ * own backend server (a real bottleneck for big files). That path was
+ * restructured to upload directly to storage instead (matching R2's
+ * existing architecture), which removed the problem this was warning
+ * about -- kept as a no-op function (always returns null) rather than
+ * deleted outright, so callers don't need to be touched again if a
+ * different destination ever reintroduces a similar constraint.
+ */
+export function getLargeUploadWarning(_capture, _destination) {
+  return null;
+}
+
+export function pad(n) {
   return String(n).padStart(2, '0');
 }
 
@@ -50,6 +74,19 @@ export async function createShareLink(capture, onProgress) {
   if (capture.uploaded && capture.shareUrl && capture.uploadDestination === destination) {
     track('LINK_GENERATED', { feature: 'sharing', action: destination });
     return { shareUrl: capture.shareUrl, destination, reused: true };
+  }
+
+  // Warn (not block) before attempting a large upload via the direct
+  // backend destination specifically -- see getLargeUploadWarning() for
+  // why that destination in particular is meaningfully more likely to be
+  // slow or fail outright for big files. Respects the user's choice
+  // either way; this only front-loads the warning instead of letting
+  // them discover it after a long, failed wait.
+  const warning = getLargeUploadWarning(capture, destination);
+  if (warning && !confirm(warning)) {
+    const err = new Error('Upload canceled.');
+    err.userCanceled = true;
+    throw err;
   }
 
   const uploadEventType = capture.type === 'recording' ? 'SCREEN_RECORDING_UPLOADED' : 'SCREENSHOT_UPLOADED';
@@ -105,11 +142,20 @@ export async function createShareLink(capture, onProgress) {
     }
   }
 
-  // Default: existing FastAPI/Supabase backend — unchanged from before.
+  // Default: FastAPI/Supabase backend — now a direct-to-storage upload
+  // (see api.js's uploadCapture for why this changed), so it no longer
+  // has a meaningful size ceiling of its own.
   try {
+    const clientId = await getAnalyticsClientId();
     const result = await uploadToBackend(
       capture.blob,
-      { type: capture.type, name: capture.name, mimeType: capture.mimeType },
+      {
+        type: capture.type,
+        name: capture.name,
+        mimeType: capture.mimeType,
+        clientId,
+        durationSeconds: capture.duration || 0
+      },
       onProgress
     );
     const base = await getApiBaseUrl();

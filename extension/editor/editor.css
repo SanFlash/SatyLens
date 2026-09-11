@@ -624,3 +624,44 @@ body {
   border-top: 1px solid var(--border);
   background: var(--bg-rail);
 }
+
+/* ---------- Responsive ---------- */
+/* The tool rail (52px) and side panel (260px) are both fixed-width by
+   design (they hold fixed-size icon buttons and form controls that
+   don't usefully reflow), which is fine at typical widths but can
+   crowd out the canvas area badly on a narrower window -- the canvas
+   itself already has min-width: 0 so it shrinks instead of overflowing,
+   but shrinking the side panel too keeps more real canvas space
+   available on a narrower window rather than fighting over what's left. */
+@media (max-width: 1000px) {
+  .ed-side-panel {
+    width: 220px;
+  }
+}
+
+@media (max-width: 800px) {
+  .ed-side-panel {
+    width: 190px;
+  }
+
+  .ed-canvas-scroll {
+    padding: 16px;
+  }
+
+  /* The topbar has three fixed-content sections (left/center/right,
+     each with several icon buttons) and no wrapping by default -- on a
+     narrow window that combination alone was enough to force the whole
+     page wider than its viewport, regardless of how much the canvas or
+     side panel could shrink. Letting it wrap, and dropping the title
+     input's minimum width, both stop it from being a hard floor on the
+     page's overall width. */
+  .ed-topbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .ed-title-input {
+    min-width: 0;
+    width: 100px;
+  }
+}

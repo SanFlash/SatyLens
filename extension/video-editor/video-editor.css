@@ -1,0 +1,398 @@
+/* extension/video-editor/video-editor.css */
+:root {
+  --bg: #0a0e1a;
+  --bg-elevated: #0d1220;
+  --bg-card: #11172b;
+  --bg-rail: #0c1122;
+  --border: #1f2a44;
+  --border-hover: #2c3b5f;
+  --text: #e8ecf6;
+  --text-dim: #8a92ab;
+  --accent: #3b82f6;
+  --accent-hover: #5b9bff;
+  --accent-soft: #3b82f61a;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+}
+
+.ve-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.ve-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.ve-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.ve-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.ve-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ve-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.ve-preview-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  min-width: 0;
+}
+
+.ve-video-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  min-height: 0;
+}
+
+#vePreviewVideo {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.ve-timeline {
+  margin-top: 16px;
+}
+
+.ve-timeline-time {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ve-timeline-track {
+  position: relative;
+  height: 44px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ve-trim-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(59, 130, 246, 0.22);
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+.ve-playhead {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+.ve-trim-handle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 12px;
+  margin-left: -6px;
+  background: var(--accent);
+  border-radius: 4px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.ve-trim-handle:hover,
+.ve-trim-handle:active {
+  background: var(--accent-hover);
+}
+
+.ve-transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.ve-hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.ve-panel {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--bg-rail);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.ve-panel-section {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ve-panel-section:last-child {
+  border-bottom: none;
+}
+
+.ve-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.ve-select {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+
+.ve-slider-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.ve-slider-row input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.ve-slider-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.ve-filter-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.ve-toggle-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 7px 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ve-toggle-btn:hover {
+  border-color: var(--accent);
+}
+
+.ve-toggle-btn.ve-toggle-active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ve-mini-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ve-mini-btn:hover {
+  border-color: var(--accent);
+}
+
+.ve-mini-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ve-primary-mini {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.ve-primary-mini:hover {
+  background: var(--accent-hover);
+}
+
+.ve-full-width {
+  width: 100%;
+}
+
+.ve-hidden {
+  display: none !important;
+}
+
+.ve-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 16, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.ve-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  width: 340px;
+  text-align: center;
+}
+
+.ve-modal h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.ve-progress-track {
+  height: 8px;
+  background: var(--bg-card);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.ve-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.ve-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.ve-btn-row button {
+  flex: 1;
+}
+
+.ve-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 12.5px;
+  z-index: 100;
+}
+
+/* ---------- Responsive ---------- */
+/* Same reasoning as extension/editor/editor.css: the side panel (280px)
+   holds fixed-size form controls that don't usefully reflow, so on a
+   narrower window it's better to shrink the panel itself (keeping more
+   space for the actual video preview + timeline, which already has
+   min-width: 0 so it shrinks instead of overflowing) than to let both
+   fight over whatever width is left. */
+@media (max-width: 1000px) {
+  .ve-panel {
+    width: 240px;
+  }
+}
+
+@media (max-width: 800px) {
+  .ve-panel {
+    width: 200px;
+    padding: 12px;
+  }
+
+  .ve-preview-col {
+    padding: 12px;
+  }
+
+  .ve-slider-row {
+    grid-template-columns: 56px 1fr 38px;
+  }
+}
+
+@media (max-width: 600px) {
+  .ve-body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .ve-panel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .ve-video-wrap {
+    min-height: 240px;
+  }
+}
+
+.ve-modal {
+  max-width: 90vw;
+}

@@ -6,6 +6,7 @@ environment so it can be injected safely by the deployment platform
 (Render, Railway, etc.) without touching source control.
 """
 import os
+import secrets
 from functools import lru_cache
 from typing import List
 
@@ -22,7 +23,7 @@ class Settings(BaseSettings):
     SUPABASE_BUCKET: str = "captures"
 
     PUBLIC_BASE_URL: str = _DEFAULT_PUBLIC_BASE_URL
-    MAX_FILE_SIZE_MB: int = 100
+    MAX_FILE_SIZE_MB: int = 0  # 0 = no cap (see max_file_size_bytes below); set a positive value to re-enable one
 
     EXTRA_CORS_ORIGINS: str = ""
     ALLOWED_EXTENSION_ORIGINS: str = ""
@@ -41,11 +42,63 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = ""
     R2_ENDPOINT: str = ""  # e.g. https://<account_id>.r2.cloudflarestorage.com
-    R2_PRESIGNED_UPLOAD_EXPIRY: int = 900  # seconds
+    R2_PRESIGNED_UPLOAD_EXPIRY: int = 86400  # seconds — 24 hours, generous enough for a very large recording even on a slow/interrupted connection. Well within S3-compatible presigned URLs' own protocol maximum (7 days for SigV4).
     R2_PRESIGNED_DOWNLOAD_EXPIRY: int = 3600  # seconds
 
+    # How long a signed READ url for a Supabase-hosted file stays valid.
+    # Generated fresh every time someone loads /s/{share_id} (never
+    # cached/stored), so this only needs to comfortably cover one
+    # viewing session -- not the share link's overall lifetime, since
+    # revisiting the link generates a brand new signed URL each time.
+    SUPABASE_PRESIGNED_DOWNLOAD_EXPIRY: int = 3600  # seconds
+
+    # Optional org-wide policy: if set, every NEW share link automatically
+    # gets this expiration applied at creation time, regardless of
+    # storage destination -- a corporate retention/compliance default,
+    # not just a per-share opt-in. A client can still request a SHORTER
+    # expiration (e.g. "expires in 1 hour" for a especially sensitive
+    # share); it can never request longer than this or "never expires"
+    # once an admin has set it. Leave unset for no forced default.
+    DEFAULT_SHARE_EXPIRY_DAYS: int = 0  # 0 = no forced default
+
+    # Secret used to sign short-lived download tokens for
+    # password-protected shares (see app/services/share_security.py) --
+    # lets someone who already entered the password download the file
+    # without re-entering it, without needing session/cookie
+    # infrastructure. Auto-generates a random one per process if left
+    # unset, which is fine for a single-instance deployment but means
+    # tokens won't validate across a restart or multiple instances --
+    # set this explicitly in production for exactly that reason.
+    SHARE_TOKEN_SECRET: str = ""
+
     @property
-    def max_file_size_bytes(self) -> int:
+    def max_file_size_bytes(self):
+        """None means no cap is enforced (the MAX_FILE_SIZE_MB=0 default).
+        This cap, when set, is enforced for BOTH upload paths (the direct
+        /api/upload endpoint and R2 presigned uploads), but the two
+        differ in an important way: R2 uploads go directly from the
+        browser to R2 storage, never touching this server's memory --
+        the file's actual size is essentially irrelevant to this
+        backend's own resource usage regardless of any cap. /api/upload
+        does NOT have that property: it receives the full file over HTTP
+        and holds it in server memory before forwarding it to Supabase
+        Storage (whose Python client only accepts raw bytes, not a
+        stream -- there is no way to avoid this from application code
+        without switching storage clients). With no cap at all, a very
+        large upload through /api/upload specifically will use server
+        memory proportional to its size -- for very large recordings
+        (many hundreds of MB+), prefer the R2 destination regardless of
+        what this setting is, since it doesn't have that constraint.
+        Separately: whatever host this runs on may impose its OWN
+        request body size limit ahead of this application entirely
+        (a reverse proxy or platform-level cap) -- that is outside
+        anything this setting can control, and R2 sidesteps it too,
+        since the large bytes never hit this server's own HTTP endpoint.
+        Set MAX_FILE_SIZE_MB to a positive number to re-enable a cap,
+        e.g. if this backend runs on a memory-constrained host and you
+        want /api/upload specifically protected against extreme sizes."""
+        if self.MAX_FILE_SIZE_MB <= 0:
+            return None
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
 
     @property
@@ -91,6 +144,18 @@ class Settings(BaseSettings):
     @property
     def r2_endpoint(self) -> str:
         return self.R2_ENDPOINT or f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+    @property
+    def effective_share_token_secret(self) -> str:
+        global _generated_token_secret
+        if self.SHARE_TOKEN_SECRET:
+            return self.SHARE_TOKEN_SECRET
+        if _generated_token_secret is None:
+            _generated_token_secret = secrets.token_urlsafe(32)
+        return _generated_token_secret
+
+
+_generated_token_secret: str | None = None
 
 
 @lru_cache

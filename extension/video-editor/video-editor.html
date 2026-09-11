@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SatyLens Video Editor</title>
+  <link rel="stylesheet" href="video-editor.css" />
+</head>
+<body>
+  <div class="ve-app">
+    <header class="ve-header">
+      <div class="ve-brand">
+        <img class="ve-logo" src="../icons/icon48.png" alt="SatyLens" />
+        <span id="veTitle">recording.webm</span>
+      </div>
+      <div class="ve-header-actions">
+        <button id="veCancelBtn" class="ve-mini-btn">Cancel</button>
+        <button id="veExportBtn" class="ve-mini-btn ve-primary-mini">Export</button>
+      </div>
+    </header>
+
+    <main class="ve-body">
+      <section class="ve-preview-col">
+        <div class="ve-video-wrap">
+          <video id="vePreviewVideo" playsinline></video>
+        </div>
+
+        <div class="ve-timeline">
+          <div class="ve-timeline-time">
+            <span id="veCurrentTime">0:00</span>
+            <span id="veTotalTime">0:00</span>
+          </div>
+          <div id="veTimelineTrack" class="ve-timeline-track">
+            <div id="veTrimRange" class="ve-trim-range"></div>
+            <div id="vePlayhead" class="ve-playhead"></div>
+            <div id="veTrimStartHandle" class="ve-trim-handle ve-trim-start" title="Trim start"></div>
+            <div id="veTrimEndHandle" class="ve-trim-handle ve-trim-end" title="Trim end"></div>
+          </div>
+          <div class="ve-transport">
+            <button id="vePlayPauseBtn" class="ve-mini-btn">▶ Play</button>
+            <span id="veTrimSummary" class="ve-hint"></span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="ve-panel">
+        <div class="ve-panel-section">
+          <div class="ve-panel-title">Speed</div>
+          <select id="veSpeedSelect" class="ve-select">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1× (Normal)</option>
+            <option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </div>
+
+        <div class="ve-panel-section">
+          <div class="ve-panel-title">Resolution</div>
+          <select id="veResolutionSelect" class="ve-select">
+            <option value="original">Original</option>
+            <option value="1080">1080p</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+          </select>
+          <p class="ve-hint" id="veResolutionHint"></p>
+        </div>
+
+        <div class="ve-panel-section">
+          <div class="ve-panel-title">Effects</div>
+
+          <label class="ve-slider-row">
+            <span>Brightness</span>
+            <input type="range" id="veBrightness" min="0.5" max="1.8" step="0.05" value="1" />
+            <span class="ve-slider-val" id="veBrightnessVal">100%</span>
+          </label>
+
+          <label class="ve-slider-row">
+            <span>Contrast</span>
+            <input type="range" id="veContrast" min="0.5" max="1.8" step="0.05" value="1" />
+            <span class="ve-slider-val" id="veContrastVal">100%</span>
+          </label>
+
+          <label class="ve-slider-row">
+            <span>Saturation</span>
+            <input type="range" id="veSaturation" min="0" max="2" step="0.05" value="1" />
+            <span class="ve-slider-val" id="veSaturationVal">100%</span>
+          </label>
+
+          <label class="ve-slider-row">
+            <span>Blur</span>
+            <input type="range" id="veBlur" min="0" max="8" step="0.5" value="0" />
+            <span class="ve-slider-val" id="veBlurVal">0px</span>
+          </label>
+
+          <div class="ve-filter-toggles">
+            <button class="ve-toggle-btn" data-filter="none">None</button>
+            <button class="ve-toggle-btn" data-filter="grayscale">Grayscale</button>
+            <button class="ve-toggle-btn" data-filter="sepia">Sepia</button>
+          </div>
+
+          <button id="veResetEffectsBtn" class="ve-mini-btn ve-full-width">Reset Effects</button>
+        </div>
+
+        <div class="ve-panel-section">
+          <div class="ve-panel-title">Estimated Output</div>
+          <div id="veEstimate" class="ve-hint"></div>
+        </div>
+      </aside>
+    </main>
+
+    <div id="veExportOverlay" class="ve-modal-overlay ve-hidden">
+      <div class="ve-modal">
+        <h3 id="veExportTitle">Exporting…</h3>
+        <div class="ve-progress-track">
+          <div id="veProgressFill" class="ve-progress-fill"></div>
+        </div>
+        <p id="veExportStatus" class="ve-hint">This can take about as long as the trimmed clip's own length. Keep this tab open.</p>
+        <div id="veExportDoneActions" class="ve-btn-row ve-hidden">
+          <button id="veDownloadBtn" class="ve-mini-btn">Download</button>
+          <button id="veSaveBtn" class="ve-mini-btn ve-primary-mini">Save to Gallery</button>
+        </div>
+        <button id="veExportCloseBtn" class="ve-mini-btn ve-full-width ve-hidden">Close</button>
+      </div>
+    </div>
+
+    <div id="toast" class="ve-toast ve-hidden"></div>
+  </div>
+
+  <script type="module" src="video-editor.js"></script>
+</body>
+</html>

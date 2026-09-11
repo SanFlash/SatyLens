@@ -16,15 +16,23 @@ create table if not exists public.captures (
   -- Reserved for a future "expiring share links" feature. NULL = never expires.
   expires_at timestamptz,
   -- Which storage backend actually holds the file bytes for this row.
-  -- 'supabase' (default, existing behavior) or 'r2' (Cloudflare R2 direct
-  -- upload flow — see app/routes/media.py). Google Drive uploads are not
-  -- tracked in this table at all: Drive is the file's system of record
-  -- for those, so there's nothing here to duplicate.
+  -- 'supabase' (default) or 'r2' (Cloudflare R2 — app/routes/media.py).
+  -- Google Drive uploads are not tracked in this table at all: Drive is
+  -- the file's system of record for those, so there's nothing here to
+  -- duplicate. NOTE: 'supabase' rows can come from either of two upload
+  -- mechanisms — the current one (POST /api/upload/signed-url + POST
+  -- /api/upload/complete, direct browser-to-Supabase-Storage upload,
+  -- app/routes/upload.py) or the original, still-supported-for-
+  -- compatibility one (POST /api/upload, full file body through this
+  -- backend). Both write 'supabase' here; `status` (below) is what
+  -- actually distinguishes a signed-upload row's lifecycle.
   storage_provider text not null default 'supabase' check (storage_provider in ('supabase', 'r2')),
-  -- 'pending' between POST /api/media/upload-url and a verified
-  -- POST /api/media/complete; 'complete' for everything else (including
-  -- every existing Supabase-backend row, which skips the pending state
-  -- entirely since that upload is synchronous).
+  -- 'pending' from POST /api/upload/signed-url (or POST
+  -- /api/media/upload-url for R2) until a verified POST
+  -- /api/upload/complete (or /api/media/complete) marks it 'complete'.
+  -- Every row created via the legacy synchronous POST /api/upload
+  -- endpoint skips 'pending' entirely and is written straight to
+  -- 'complete', since that upload has no separate confirmation step.
   status text not null default 'complete' check (status in ('pending', 'complete')),
   revoked boolean not null default false,
   view_count integer not null default 0,
@@ -33,7 +41,11 @@ create table if not exists public.captures (
   -- /api/media/history scope "my recent links" without a real user-auth
   -- system. Nullable: rows created before this existed, or without a
   -- client_id supplied, just aren't scoped to any history view.
-  client_id text
+  client_id text,
+  -- Optional password protection (see app/services/share_security.py).
+  -- Stores a salted PBKDF2 hash, never the plaintext password. NULL =
+  -- no password required, the existing/default behavior.
+  password_hash text
 );
 
 -- Fast lookups by share_id (used on every GET /api/share/{id} and /s/{id}).
@@ -63,6 +75,7 @@ alter table public.captures add column if not exists revoked boolean not null de
 alter table public.captures add column if not exists view_count integer not null default 0;
 alter table public.captures add column if not exists download_count integer not null default 0;
 alter table public.captures add column if not exists client_id text;
+alter table public.captures add column if not exists password_hash text;
 
 -- Re-apply constraints too, in case this table predates them (e.g. the
 -- 'collage' type, or the provider/status allow-lists). Drop-then-add is

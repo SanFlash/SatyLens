@@ -152,7 +152,7 @@ def test_upload_url_success_creates_pending_row(fake_db, configured_settings, mo
     assert body["success"] is True
     assert body["object_key"].startswith("screenshots/client-00000001/")
     assert body["upload_url"].startswith("https://r2.example/")
-    assert body["expires_in"] == 900
+    assert body["expires_in"] == configured_settings.R2_PRESIGNED_UPLOAD_EXPIRY
 
     rows = fake_db.store["captures"]
     assert len(rows) == 1

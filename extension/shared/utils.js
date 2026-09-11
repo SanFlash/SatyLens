@@ -148,3 +148,15 @@ export function debounce(fn, wait = 200) {
     t = setTimeout(() => fn(...args), wait);
   };
 }
+
+export function pickSupportedVideoMimeType() {
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm'
+  ];
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  throw new Error('No supported video recording format is available in this browser.');
+}

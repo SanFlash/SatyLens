@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SatyLens — {% if error %}Link unavailable{% else %}Shared {{ capture.type }}{% endif %}</title>
+<title>SatyLens — {% if error %}Link unavailable{% elif password_required %}Password required{% else %}Shared {{ capture.type }}{% endif %}</title>
 <style>
   :root {
     --bg: #0a0e1a;
@@ -86,6 +86,44 @@
   .error-state .icon { font-size: 34px; margin-bottom: 12px; }
   .error-state h2 { margin: 0 0 8px; font-size: 16px; }
   .error-state p { color: var(--text-dim); font-size: 13px; margin: 0; }
+  .password-state {
+    padding: 44px 28px;
+    text-align: center;
+  }
+  .password-state .icon { font-size: 30px; margin-bottom: 10px; }
+  .password-state h2 { margin: 0 0 6px; font-size: 16px; }
+  .password-state p { color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }
+  .password-form {
+    display: flex;
+    gap: 8px;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+  .password-form input {
+    flex: 1;
+    background: #0d1424;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .password-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .password-form button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 18px;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .password-error {
+    color: #ff8a8a;
+    font-size: 12.5px;
+    margin-top: 12px;
+  }
 </style>
 </head>
 <body>
@@ -99,6 +137,17 @@
       <div class="icon">🔒</div>
       <h2>{{ error_title }}</h2>
       <p>{{ error_message }}</p>
+    </div>
+    {% elif password_required %}
+    <div class="password-state">
+      <div class="icon">🔐</div>
+      <h2>This share is password-protected</h2>
+      <p>Enter the password to view this content.</p>
+      <form class="password-form" method="post" action="/s/{{ share_id }}">
+        <input type="password" name="password" placeholder="Password" autofocus required />
+        <button type="submit">Unlock</button>
+      </form>
+      {% if password_error %}<div class="password-error">{{ password_error }}</div>{% endif %}
     </div>
     {% else %}
     <div class="media-wrap">

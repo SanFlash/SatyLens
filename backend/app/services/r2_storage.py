@@ -86,7 +86,8 @@ def validate_upload_request(media_type: str, content_type: str, file_size: int) 
         raise R2ValidationError(f"Unsupported content type: {content_type}")
     if file_size <= 0:
         raise R2ValidationError("file_size must be greater than zero.")
-    if file_size > settings.max_file_size_bytes:
+    size_limit = settings.max_file_size_bytes  # None = no cap
+    if size_limit is not None and file_size > size_limit:
         raise R2ValidationError(
             f"File exceeds the {settings.MAX_FILE_SIZE_MB}MB upload limit."
         )

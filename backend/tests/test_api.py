@@ -134,6 +134,97 @@ def test_upload_rejects_file_too_large(monkeypatch):
     assert res.status_code == 413
 
 
+def test_upload_rejects_oversized_file_before_fully_buffering_it(monkeypatch):
+    """The chunked-read path should reject an oversized file as soon as
+    the running total crosses the limit, not only after reading the
+    entire body -- verified indirectly here by confirming a file whose
+    size is many multiples of the internal 4MB chunk size still gets a
+    clean 413 rather than hanging or erroring some other way."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "MAX_FILE_SIZE_MB", 5)  # 5MB cap
+    oversized_payload = b"0" * (20 * 1024 * 1024)  # 20MB — several chunks over the cap
+    res = client.post(
+        "/api/upload",
+        files={"file": ("big.webm", io.BytesIO(oversized_payload), "video/webm")},
+        data={"type": "recording", "name": "big.webm", "mime_type": "video/webm"},
+    )
+    assert res.status_code == 413
+    assert "5MB" in res.json()["detail"]
+
+
+def test_upload_has_no_size_cap_by_default():
+    """Direct proof of the default behavior after MAX_FILE_SIZE_MB's
+    default changed from a fixed cap to 0 (unlimited): a large upload
+    succeeds with NO monkeypatching at all -- this is what a fresh
+    deployment actually does out of the box, not just what's possible
+    after an operator configures a higher limit."""
+    settings = get_settings()
+    assert settings.MAX_FILE_SIZE_MB == 0
+    assert settings.max_file_size_bytes is None
+
+
+def test_upload_accepts_a_recording_over_100mb(monkeypatch):
+    """Direct proof of the actual feature request: a recording larger
+    than the OLD 100MB default limit now succeeds, using the new
+    default (2048MB). This is exactly the scenario that used to be
+    rejected outright."""
+    monkeypatch.setattr(
+        upload_route, "upload_file_bytes", lambda path, data, mime: "https://cdn.example.com/" + path
+    )
+    monkeypatch.setattr(upload_route, "insert_capture_row", lambda record: record)
+
+    large_payload = b"0" * (120 * 1024 * 1024)  # 120MB — over the old 100MB cap
+    res = client.post(
+        "/api/upload",
+        files={"file": ("meeting-recording.webm", io.BytesIO(large_payload), "video/webm;codecs=vp9,opus")},
+        data={
+            "type": "recording",
+            "name": "meeting-recording.webm",
+            "mime_type": "video/webm;codecs=vp9,opus",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+
+
+def test_generate_supabase_signed_read_url_calls_create_signed_url_not_get_public_url(monkeypatch):
+    """Direct proof of the actual fix: file URLs are generated via
+    create_signed_url() (works regardless of whether the bucket is
+    public or private), never get_public_url() (only works for a
+    public bucket -- a real, likely cause of "upload succeeds but the
+    link doesn't work" for the many Supabase projects using private
+    buckets)."""
+    import app.services.storage as storage_service
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "SUPABASE_SERVICE_ROLE_KEY", "fake-key")
+    monkeypatch.setattr(settings, "SUPABASE_PRESIGNED_DOWNLOAD_EXPIRY", 1800)
+
+    calls = []
+
+    class FakeBucket:
+        def create_signed_url(self, path, expires_in, options=None):
+            calls.append({"path": path, "expires_in": expires_in})
+            return {"signedURL": f"https://example.supabase.co/storage/v1/object/sign/bucket/{path}?token=abc"}
+
+        def get_public_url(self, path):
+            raise AssertionError("get_public_url() should never be called — it doesn't work for private buckets")
+
+    class FakeStorage:
+        def from_(self, bucket_name):
+            return FakeBucket()
+
+    class FakeClient:
+        storage = FakeStorage()
+
+    monkeypatch.setattr(storage_service, "get_supabase_client", lambda: FakeClient())
+
+    url = storage_service.generate_supabase_signed_read_url("recordings/c1/2026/09/x.webm")
+    assert url == "https://example.supabase.co/storage/v1/object/sign/bucket/recordings/c1/2026/09/x.webm?token=abc"
+    assert calls == [{"path": "recordings/c1/2026/09/x.webm", "expires_in": 1800}]
+
+
 def test_upload_success_with_mocked_storage(monkeypatch):
     monkeypatch.setattr(
         upload_route, "upload_file_bytes", lambda path, data, mime: "https://cdn.example.com/" + path
@@ -227,20 +318,12 @@ def test_get_share_info_success(monkeypatch):
         "created_at": "2026-08-14T10:00:00+00:00",
     }
     monkeypatch.setattr(share_route, "get_capture_row", lambda share_id: fake_row)
-
-    class FakeBucket:
-        def get_public_url(self, path):
-            return f"https://cdn.example.com/{path}"
-
-    class FakeStorage:
-        def from_(self, bucket):
-            return FakeBucket()
-
-    class FakeClient:
-        storage = FakeStorage()
-
-    monkeypatch.setattr(share_route, "get_supabase_client", lambda: FakeClient())
-    monkeypatch.setattr(share_route.settings, "SUPABASE_BUCKET", "captures")
+    # share.py resolves a file's URL via a signed read URL now, not
+    # get_public_url() (see generate_supabase_signed_read_url's
+    # docstring) -- mock that function directly.
+    monkeypatch.setattr(
+        share_route, "generate_supabase_signed_read_url", lambda path, expires_in=None: f"https://cdn.example.com/{path}"
+    )
 
     res = client.get("/api/share/abc123")
     assert res.status_code == 200

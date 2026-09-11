@@ -12,6 +12,9 @@
       <h1>SatyLens Gallery</h1>
     </div>
     <div class="cf-gheader-actions">
+      <button id="uploadMediaBtn" class="cf-icon-btn" title="Upload an image or video">📤</button>
+      <input type="file" id="uploadMediaInput" accept="image/*,video/*" class="cf-hidden" />
+      <button id="selectModeBtn" class="cf-icon-btn" title="Select multiple">☑</button>
       <button id="linkHistoryBtn" class="cf-icon-btn" title="Link History">🔗</button>
       <button id="settingsBtn" class="cf-icon-btn" title="Settings">⚙</button>
     </div>
@@ -23,13 +26,26 @@
       <button class="cf-tab" data-filter="screenshot">Screenshots</button>
       <button class="cf-tab" data-filter="recording">Recordings</button>
     </div>
-    <input id="searchInput" class="cf-search" type="search" placeholder="Search captures..." />
+    <input id="searchInput" class="cf-search" type="search" placeholder="Search captures or #tags..." />
     <select id="sortSelect" class="cf-sort">
       <option value="newest">Newest</option>
       <option value="oldest">Oldest</option>
       <option value="largest">Largest</option>
       <option value="smallest">Smallest</option>
     </select>
+  </div>
+
+  <div id="tagFilterRow" class="cf-tag-filter-row cf-hidden"></div>
+
+  <div id="bulkActionBar" class="cf-bulk-bar cf-hidden">
+    <span id="bulkSelectedCount">0 selected</span>
+    <div class="cf-bulk-actions">
+      <button id="bulkTagBtn" class="cf-bulk-btn">🏷 Add Tag</button>
+      <button id="bulkDownloadBtn" class="cf-bulk-btn">⬇ Download</button>
+      <button id="bulkDeleteBtn" class="cf-bulk-btn cf-bulk-danger">🗑 Delete</button>
+      <button id="bulkSelectAllBtn" class="cf-bulk-btn">Select All</button>
+      <button id="bulkClearBtn" class="cf-bulk-btn">Clear</button>
+    </div>
   </div>
 
   <main id="grid" class="cf-grid"></main>
@@ -48,6 +64,11 @@
       <div class="cf-modal-info">
         <h2 id="modalName"></h2>
         <div class="cf-modal-meta" id="modalMeta"></div>
+        <div class="cf-modal-tags" id="modalTags"></div>
+        <div class="cf-tag-input-row">
+          <input id="modalTagInput" type="text" placeholder="Add a tag…" maxlength="24" />
+          <button id="modalTagAddBtn">Add</button>
+        </div>
         <div id="modalUploadStatus" class="cf-upload-status"></div>
         <div class="cf-action-grid">
           <button id="mCopy" class="cf-action-btn">Copy</button>

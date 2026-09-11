@@ -7,12 +7,14 @@
 import { CaptureStore } from '../shared/storage.js';
 import { copyTextToClipboard } from '../shared/clipboard.js';
 import { createShareLink } from '../shared/share.js';
+import { mountShareSecurityControls } from '../shared/share-security-ui.js';
 import { track } from '../shared/analytics.js';
 import {
   timestampForFilename,
   formatBytes,
   formatDuration,
-  generateVideoThumbnail
+  generateVideoThumbnail,
+  pickSupportedVideoMimeType
 } from '../shared/utils.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -177,6 +179,15 @@ async function buildCroppedAreaStream(tabStream) {
   const sourceVideo = document.createElement('video');
   sourceVideo.muted = true;
   sourceVideo.srcObject = tabStream;
+  // Must actually be in the document, not just held by a JS reference --
+  // an off-tree <video> element is not guaranteed to keep decoding
+  // frames reliably in every browser configuration (headless/background
+  // rendering paths in particular can deprioritize decode work for
+  // elements with no render target). Positioned off-screen rather than
+  // display:none, since some engines pause decode for non-rendered
+  // (display:none) elements too, which would defeat the purpose here.
+  sourceVideo.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;';
+  document.body.appendChild(sourceVideo);
   await sourceVideo.play();
   await new Promise((resolve) => {
     if (sourceVideo.videoWidth > 0) resolve();
@@ -193,16 +204,27 @@ async function buildCroppedAreaStream(tabStream) {
   const sx = Math.round(areaRect.x * areaRect.dpr);
   const sy = Math.round(areaRect.y * areaRect.dpr);
 
-  let rafId = null;
+  // Drives the crop-drawing loop with setInterval, not
+  // requestAnimationFrame. rAF is throttled (sometimes to as little as
+  // 1fps) or fully paused once a tab loses focus/visibility -- and the
+  // whole point of screen/area recording is that the user switches AWAY
+  // from this recorder tab to whatever they're actually recording,
+  // backgrounding it for the entire recording. With rAF driving this
+  // loop, the crop canvas would stop updating the moment the tab lost
+  // focus, and since MediaRecorder captures directly from that canvas,
+  // the recorded video would freeze on whatever frame was last drawn --
+  // exactly the "only shows the first frame" bug. setInterval keeps
+  // running regardless of tab visibility.
+  let intervalId = null;
   const drawFrame = () => {
     try {
       cropCtx.drawImage(sourceVideo, sx, sy, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
     } catch (_) {
       /* a frame drawn before the video is fully ready — harmless, next frame recovers */
     }
-    rafId = requestAnimationFrame(drawFrame);
   };
   drawFrame();
+  intervalId = setInterval(drawFrame, 1000 / 30);
 
   const originalVideoTrack = tabStream.getVideoTracks()[0];
   if (originalVideoTrack) {
@@ -214,9 +236,10 @@ async function buildCroppedAreaStream(tabStream) {
   }
 
   areaCropCleanup = () => {
-    if (rafId) cancelAnimationFrame(rafId);
+    if (intervalId) clearInterval(intervalId);
     sourceVideo.pause();
     sourceVideo.srcObject = null;
+    sourceVideo.remove();
     tabStream.getTracks().forEach((t) => t.stop());
   };
 
@@ -336,18 +359,6 @@ async function buildCombinedStream() {
   combinedStream = new MediaStream([videoTrack, ...destination.stream.getAudioTracks()]);
 }
 
-function pickSupportedMimeType() {
-  const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm'
-  ];
-  for (const type of candidates) {
-    if (MediaRecorder.isTypeSupported(type)) return type;
-  }
-  throw new Error('No supported video recording format is available in this browser.');
-}
-
 /* ------------------------------ Recording lifecycle ------------------------------ */
 
 async function startRecording() {
@@ -367,7 +378,7 @@ async function startRecording() {
     if (state === STATE.RECORDING || state === STATE.PAUSED) stopRecording();
   });
 
-  const mimeType = pickSupportedMimeType();
+  const mimeType = pickSupportedVideoMimeType();
   recordedChunks = [];
   mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
 
@@ -685,6 +696,12 @@ async function onDownload() {
   showToast('Download started ✅');
 }
 
+async function onEditVideo() {
+  if (!currentCaptureId) await onSave();
+  if (!currentCaptureId) return; // onSave failed silently upstream — nothing to edit
+  chrome.tabs.create({ url: chrome.runtime.getURL(`video-editor/video-editor.html?id=${currentCaptureId}`) });
+}
+
 async function onShare() {
   const btn = $('#btnShare');
   try {
@@ -695,7 +712,7 @@ async function onShare() {
     progressWrap.classList.remove('cf-hidden');
 
     const capture = await CaptureStore.get(currentCaptureId);
-    const { shareUrl } = await createShareLink(capture, (loaded, total) => {
+    const { shareUrl, destination } = await createShareLink(capture, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       progressBar.style.width = pct + '%';
       btn.textContent = `Uploading… ${pct}%`;
@@ -704,9 +721,20 @@ async function onShare() {
     $('#shareUrlInput').value = shareUrl;
     $('#shareResult').classList.remove('cf-hidden');
     showToast('Share link created 🔗');
+
+    if (destination !== 'drive') {
+      const shareResultEl = $('#shareResult');
+      const existingControls = shareResultEl.querySelector('.cf-share-security-mount');
+      if (existingControls) existingControls.remove();
+      const shareId = shareUrl.split('/').filter(Boolean).pop();
+      const mount = mountShareSecurityControls(shareResultEl, shareId, showToast);
+      mount.classList.add('cf-share-security-mount');
+    }
   } catch (err) {
-    console.error(err);
-    showToast(err.message || 'Upload failed. Your recording is safely stored locally.', true);
+    if (!err.userCanceled) {
+      console.error(err);
+      showToast(err.message || 'Upload failed. Your recording is safely stored locally.', true);
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = 'Create Share Link';
@@ -757,6 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#stopBtn').addEventListener('click', stopRecording);
   $('#micMuteBtn').addEventListener('click', toggleMicMute);
   $('#btnDownload').addEventListener('click', onDownload);
+  $('#btnEditVideo').addEventListener('click', onEditVideo);
   $('#btnDownloadTranscript').addEventListener('click', onDownloadTranscript);
   $('#btnSave').addEventListener('click', onSave);
   $('#btnShare').addEventListener('click', onShare);

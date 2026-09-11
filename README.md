@@ -82,46 +82,97 @@ public shareable links.
 ```
 Chrome Extension (MV3, vanilla JS)
         |
-        | HTTPS (only on "Create Share Link")
+        | HTTPS (only on "Create Share Link", and only a small JSON
+        |        request even then — see below)
         v
 FastAPI Backend
         |
-        +------> Supabase Storage   (capture files)
-        +------> Supabase Postgres  (capture metadata)
+        +--- generates a short-lived, single-object signed upload URL
+        |    (Supabase) or presigned PUT URL (R2) using its own
+        |    privileged credentials, server-side only
+        |
+        |    the ACTUAL FILE BYTES then go directly from the browser to
+        |    whichever storage destination is selected:
+        v
+   ┌─────────────────┐   ┌──────────────────┐   ┌─────────────────┐
+   │ Supabase Storage │   │  Cloudflare R2   │   │  Google Drive    │
+   │  (default)       │   │  (opt-in)        │   │  (opt-in)        │
+   └─────────────────┘   └──────────────────┘   └─────────────────┘
+        |                        |
+        v                        v
+   Supabase Postgres (capture metadata — R2 rows too; Drive files are
+                       their own system of record and aren't duplicated
+                       here)
 ```
 
-The Supabase **service-role key never leaves the backend** — it is not
-present anywhere in the extension source, manifest, or JS bundle.
-Screenshot/recording capture, the local gallery, and downloads all work
-completely offline; only creating a share link requires network access.
+**No upload destination routes the file body through this backend's own
+HTTP handlers anymore** — this backend only ever generates short-lived,
+scoped upload credentials and handles small JSON requests; the actual
+bytes always go directly from the browser to storage. This removed a
+real bottleneck an earlier version had: the original `/api/upload`
+endpoint read the entire file into server memory and then made a
+*second* network hop to Supabase Storage, which made large uploads slow
+and prone to failing against a reverse proxy's own timeout. That
+endpoint still exists for backward compatibility, but nothing in the
+extension calls it anymore.
+
+The Supabase **service-role key and any R2 credentials never leave the
+backend** — not present anywhere in the extension source, manifest, or
+JS bundle. What the browser receives instead is always a scoped,
+single-object, time-limited credential the backend generates using its
+own privileged access — the same pattern used for both storage
+destinations. Screenshot/recording capture, annotation editing, the
+local gallery, and downloads all work completely offline; only creating
+a share link (or connecting Google Drive) requires network access.
 
 ## Project structure
 
 ```
 satylens/
-├── extension/            Chrome extension (Manifest V3)
+├── extension/              Chrome extension (Manifest V3)
 │   ├── manifest.json
-│   ├── background/       service worker: capture orchestration, messaging
-│   ├── popup/             popup UI (visible-tab screenshot flow)
-│   ├── recorder/          dedicated tab for screen recording
-│   ├── selector/          content script: drag-to-select overlay
-│   ├── gallery/           full gallery page
-│   ├── shared/             api.js, storage.js (IndexedDB), clipboard.js, utils.js
+│   ├── background/         service worker: capture orchestration, messaging
+│   ├── popup/               popup UI (visible-tab screenshot flow, quick actions)
+│   ├── recorder/            dedicated tab for screen recording — Tab / Screen /
+│   │                        Window / Selected Area, mic + system audio mixing,
+│   │                        live mic mute, optional live transcription (mic only)
+│   ├── editor/               screenshot annotation editor (shapes, text, blur/
+│   │                        pixelate redaction, crop, layers, undo/redo)
+│   ├── video-editor/         video editor — trim, speed, effects, resolution
+│   ├── selector/             content script: drag-to-select overlay (shared by
+│   │                        screenshot area-select and Record Selected Area)
+│   ├── gallery/               full gallery page — search/filter/sort, bulk
+│   │                        actions, tags, upload existing media, Link History,
+│   │                        Settings (upload destination, Drive connect, etc.)
+│   ├── shared/                api.js (backend + signed-upload flow), r2.js,
+│   │                        drive.js, share.js (destination dispatcher),
+│   │                        share-security-ui.js, storage.js (IndexedDB),
+│   │                        video-export.js, analytics.js, clipboard.js, utils.js
 │   └── icons/
-├── backend/               FastAPI service
+├── backend/                 FastAPI service
 │   ├── app/
 │   │   ├── main.py
 │   │   ├── config.py
-│   │   ├── routes/        upload.py, share.py, health.py
-│   │   ├── services/      storage.py (Supabase), sharing.py (share IDs)
-│   │   ├── models/        capture.py (Pydantic schemas)
-│   │   └── templates/     share.html (public viewer page)
-│   ├── tests/              pytest suite (mocked Supabase)
+│   │   ├── routes/          upload.py (Supabase signed-upload flow + legacy
+│   │   │                    direct upload), media.py (R2 presigned-upload
+│   │   │                    flow), share.py (viewer, password protection,
+│   │   │                    JSON API), analytics.py, health.py
+│   │   ├── services/        storage.py (Supabase), r2_storage.py,
+│   │   │                    sharing.py (share IDs, default expiry),
+│   │   │                    share_security.py (password hashing, download
+│   │   │                    tokens), analytics.py
+│   │   ├── models/          capture.py (Pydantic schemas)
+│   │   └── templates/       share.html (public viewer + password-gate page),
+│   │                        dashboard.html (analytics dashboard)
+│   ├── tests/                pytest suite (mocked Supabase/R2 clients)
 │   ├── requirements.txt
 │   └── .env.example
+├── desktop/                  Electron desktop app (screenshot + recording,
+│                            built independently from the extension — see its
+│                            own README for current feature parity)
 ├── supabase/
-│   ├── schema.sql          captures table + RLS
-│   └── SETUP.md            bucket + table setup walkthrough
+│   ├── schema.sql            captures table + analytics tables + RLS
+│   └── SETUP.md               bucket + table setup walkthrough
 └── .gitignore
 ```
 
@@ -368,6 +419,481 @@ retrieval/deletion, and the "Supabase not configured" path).
 - Screenshot collage builder is the one remaining planned phase
 
 ## Changelog
+
+**v1.22.0 — Self-service Supabase setup diagnostic**
+
+Since I can't directly access your live Supabase project or deployed
+backend from this environment (deliberately restricted network access,
+and no way to fetch a URL that hasn't appeared in a prior search
+result), continuing to guess at what's misconfigured turn by turn isn't
+a good way to actually solve this. Built something more useful instead.
+
+**New: `GET /api/diagnostics/supabase`** — visit this directly in a
+browser once your backend is deployed. It checks each piece of the
+Supabase setup independently and reports exactly which one (if any) is
+the problem, with the real underlying error message, not just a status
+code:
+- Is `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` actually set on the
+  *deployed* backend (not just in a local `.env` file)?
+- Does the bucket named in `SUPABASE_BUCKET` actually exist in your
+  project? If not, lists every bucket that *does* exist, so a typo or
+  mismatch is obvious immediately.
+- Are your credentials valid at all (a bad/expired/wrong-type key
+  fails this specific check with a clear explanation, distinct from a
+  missing bucket)?
+- Does the `captures` table exist and respond to a query?
+- End-to-end: can a real signed upload URL actually be generated right
+  now, using your real configuration?
+
+Ends with a plain-language verdict — either "everything checks out" (if
+it still doesn't work after that, the problem is elsewhere: CORS, the
+extension's configured backend URL, or a network/proxy issue) or a
+direct pointer at whichever check failed.
+
+Verified with 5 dedicated tests covering every failure mode this
+diagnostic exists to catch: not configured at all, bucket missing,
+credentials invalid, table missing, and the full happy path. Caught and
+fixed a real bug while writing them — the diagnostic's own
+signed-upload-generation check initially failed against valid mock
+credentials because of the same `from x import y` reference gotcha
+that's come up a few times in this project (a function in one module
+calling its own internal reference to another function, which patching
+a *different* module's imported copy of that function doesn't affect).
+**120/120 backend tests pass.**
+
+**v1.21.0 — Found the actual reason links weren't working: a stale setup guide**
+
+Traced "unable to create link" to something the previous version's fix
+didn't touch: `_resolve_file_url()` (what generates the URL a share
+viewer actually loads) was still calling Supabase's `get_public_url()`
+— which **only works if the storage bucket is set to Public**. The
+original setup guide (`supabase/SETUP.md`) told everyone to make their
+bucket public specifically because of this. If you followed that guide
+and made your bucket public, this specific issue wouldn't have hit you
+— but if you (reasonably) left it private, or used a project where it
+already was, every upload could succeed while every resulting link
+404'd or 403'd for anyone who opened it. That's a very plausible
+explanation for "unable to create link."
+
+**The fix**: `_resolve_file_url()` now generates a signed, time-limited
+read URL (`create_signed_url()`) instead — the same approach R2 already
+used correctly. A signed URL works identically whether the bucket is
+public or private, generated fresh every time a share page is actually
+viewed (never cached/stored), so it doesn't matter that it eventually
+expires. **The storage bucket can now be left Private** — actually the
+recommended setting going forward, since nothing in this codebase needs
+it to be public anymore.
+
+- Also fixed the same `get_public_url()` assumption in the legacy
+  `/api/upload` endpoint's response, for consistency.
+- Two existing tests were mocking the old `get_public_url()`-based
+  client chain directly; updated both to mock the new signed-URL
+  function instead, and added a dedicated test asserting
+  `create_signed_url()` is what actually gets called — with an explicit
+  assertion that `get_public_url()` is never touched at all.
+- **115/115 backend tests pass.**
+
+**Complete Supabase setup guide, rewritten**: `supabase/SETUP.md` was
+significantly out of date (still told readers to make their bucket
+public) and is now accurate for every current feature — the direct
+signed-upload flow, password protection, per-share and org-wide
+expiration, and R2 as an alternative destination. Added a dedicated
+**Troubleshooting** section listing the actual causes of "unable to
+create link" in likelihood order (env vars not set on the deployed
+backend, a bucket-name mismatch, the exact public/private bug this
+version fixes, and how to tell them apart from your backend's own
+logs). `.env.example` was also stale (still showed the old
+`MAX_FILE_SIZE_MB=100` default and the old 1-hour R2 upload expiry) —
+updated to match current defaults and documented every setting that's
+been added since, including ones that weren't in the file at all yet
+(`DEFAULT_SHARE_EXPIRY_DAYS`, `SHARE_TOKEN_SECRET`,
+`SUPABASE_PRESIGNED_DOWNLOAD_EXPIRY`).
+
+**v1.20.0 — Genuinely unlimited uploads: direct-to-Supabase-storage architecture**
+
+The previous version's fix for large uploaded videos was a warning, not
+a real fix — you were right to push back on that. This version actually
+removes the bottleneck instead of just explaining it.
+
+**What changed**: the default (Supabase) upload destination now uses
+the same architecture R2 already had — a direct browser-to-storage
+upload — instead of routing the full file through this backend's own
+HTTP handlers first.
+- New `POST /api/upload/signed-url`: this backend generates a
+  short-lived, single-object signed upload URL using Supabase's own
+  `create_signed_upload_url()` API (using its privileged service-role
+  key server-side only) and hands back just that scoped credential,
+  along with a pending capture row.
+- The browser then PUTs the file **directly** to that signed URL —
+  this backend's own code never sees the file bytes at all, for any
+  file size.
+- New `POST /api/upload/complete`: verifies the object actually landed
+  in Supabase Storage and reads its **real, server-recorded size**
+  (never a client-reported number) before marking the row complete and
+  handing back the share link.
+- The original `POST /api/upload` endpoint (full file body through this
+  server) still exists for backward compatibility, but the extension
+  itself no longer calls it — kept for anything else that might still
+  use it, clearly marked as legacy in its own docstring.
+- Removed the now-obsolete "this might be slow, continue anyway?"
+  warning entirely, since the problem it was warning about no longer
+  exists.
+
+**Security, verified explicitly, not just assumed**: the single most
+important property of this whole design is that the backend's
+privileged service-role key must never reach the browser — only a
+scoped, temporary, single-object credential should. Added a dedicated
+test asserting the service-role key value never appears anywhere in the
+`/api/upload/signed-url` response body.
+
+**Verified with 17 new tests** (10 backend, 7 extension): the full
+three-step flow in the correct order, a simulated 1.5GB end-to-end
+upload, size verification using Supabase's own object listing (not
+trusting the client), rejecting a mismatched storage provider cleanly,
+and confirming a 500MB blob goes through the exact same code path as
+any other file with no special-casing or size gate. 114/114 backend
+tests pass overall, 6/6 page-load regression clean.
+
+**Also this version**: updated the README's architecture diagram and
+project structure (both were significantly out of date — missing R2,
+Google Drive, the video editor, and the new upload flow entirely), and
+clarified the SQL schema's comments to explain that `storage_provider =
+'supabase'` rows can now come from either upload mechanism, with
+`status` being what actually distinguishes a signed-upload row's
+lifecycle. No schema *changes* were needed — the existing `status` and
+`storage_provider` columns already covered this.
+
+**v1.19.0 — Fixed share-link failures on large uploaded videos**
+
+Root cause: creating a share link for a large uploaded video via the
+direct backend destination (the default for every user unless R2 is
+explicitly configured) hits a real architectural bottleneck — that path
+makes *two* network hops (browser → backend → Supabase Storage) instead
+of R2's one, and separately holds the whole file in server memory while
+doing it. For a large file, the actual observed failure is almost
+always a reverse proxy or hosting platform's own gateway giving up and
+returning its own HTML error page — which then failed silently as a
+bare, unhelpful "Invalid response from server" when this app's own code
+tried to parse that HTML as JSON.
+
+- **Proactive warning, not a silent failure after a long wait.**
+  `createShareLink()` now checks the file size before attempting a
+  backend-destination upload; above 200MB, it asks first — explaining
+  concretely why this specific destination is slower/less reliable at
+  that size, and suggesting R2 (a single, direct-to-storage hop) if
+  it's available. Declining doesn't count as an error — verified
+  directly that the underlying upload is never even attempted if the
+  user says no, and no alarming "upload failed" toast fires for a
+  deliberate cancellation. Skipped entirely for R2 and Drive, which
+  don't share this specific constraint. Wired into all four places a
+  share link can be created (popup, Gallery, editor, recorder).
+- **Much clearer failure message when a backend upload does fail this
+  way.** Detects gateway-style HTTP statuses (502/503/504) or an
+  HTML-looking response body, and explains plainly what's likely
+  happening and what to do about it, instead of the old cryptic parse
+  error.
+- Verified with 7 checks: correct warning thresholds (warns above
+  200MB on backend, never on R2/Drive, never for small files),
+  confirmed the upload is genuinely never attempted when declined, and
+  confirmed a simulated 504 gateway response now produces an actionable
+  message mentioning the real cause instead of the old dead-end error.
+
+**On upload size and export speed, still tracking the last two asks**:
+size is already unlimited by default as of v1.18.0 (see that entry).
+Export speed — I made real, verified optimizations last version but
+directly measured that they don't meaningfully change export time,
+because the bottleneck is fundamental to how this editor works (a
+real-time canvas re-render), not per-frame overhead. A genuine fix
+needs a WebCodecs-based rewrite — a real architectural change involving
+either a new dependency or a substantial hand-rolled WebM
+demuxer/muxer, not a tweak. I'd rather size that properly with an
+explicit go-ahead than fold it into a routine pass.
+
+**v1.18.0 — Unlimited upload size, honest export-speed investigation**
+
+**No more artificial upload size cap.** `MAX_FILE_SIZE_MB` now defaults
+to `0` (unlimited) instead of a fixed number — both upload paths
+(direct backend and R2) skip the size check entirely by default. Set it
+to a positive value if you want a cap re-enabled (e.g. running on a
+memory-constrained host, where the direct-upload path specifically
+still holds the full file in server memory before forwarding it to
+Supabase Storage — see the code comment on `max_file_size_bytes` for
+why that specific constraint can't be fully removed from application
+code). R2's presigned upload URL window also raised from 1 hour to 24
+hours, so an extremely large upload on a slow or interrupted connection
+has much more room before the URL itself expires mid-transfer.
+
+**Export speed — real investigation, with an honest result I want to be
+upfront about.** I made three legitimate, verified-correct optimizations
+to the video editor's export pipeline:
+- Stopped re-parsing and re-applying the same CSS filter string on
+  every single frame — effects are fixed for the whole export, so this
+  was pure repeated work for a value that never changes mid-export.
+- Skip building the entire Web Audio pipeline (AudioContext,
+  MediaElementSource, MediaStreamDestination) when the source video has
+  no audio track at all, checked via `HTMLMediaElement.audioTracks`
+  (falls back to assuming audio IS present if that check is ever
+  inconclusive, so this can never silently drop real audio).
+- Added `desynchronized: true` to the export canvas's context, a
+  standard hint that lets the browser skip some normal display-sync
+  overhead for a canvas that's never actually shown on screen.
+
+**Here's the honest part**: I measured the actual before/after impact
+directly rather than assuming these helped, and the result was that the
+"optimized" version was not measurably faster — within noise, actually
+briefly *slower* on one run (-86ms on a ~2.6s export). The dominant cost
+of an export is not per-frame overhead; it's the fundamental nature of
+the technique itself. This editor works by literally playing the source
+video through a canvas in real time and re-capturing it — there's no
+server-side video processing or bundled codec library in this project,
+so a trim/speed/effects export at 1× speed takes roughly as long as the
+trimmed clip's own duration, full stop. The three fixes above are still
+worth keeping (they're strictly more correct and marginally more
+efficient, and cost nothing), but they don't address what "faster"
+actually requires.
+
+**What genuinely faster-than-real-time export would take**: rewriting
+the pipeline around the WebCodecs API (`VideoDecoder`/`VideoEncoder`),
+which can process frames as fast as the hardware allows instead of
+being paced by real-time playback — but this needs a WebM
+demuxer/muxer (parsing and rewriting the container format directly),
+which means either a meaningful new third-party dependency or a
+substantial hand-rolled implementation. That's a real architectural
+change, not a tweak, and I didn't want to either commit to that scope
+unilaterally or quietly ship optimizations that don't actually solve
+what was asked. If a genuine speedup matters enough to be worth that
+investment, it needs to be a deliberate next step, not something
+folded into this pass.
+
+**v1.17.0 — Frozen-frame recording fix, upload media to Gallery**
+
+**Frozen-frame recording bug — two real fixes, with an honest note on verification.**
+`buildCroppedAreaStream()` (the "Record Selected Area" code path) had
+two independent, genuine bugs:
+- Its frame-drawing loop used `requestAnimationFrame`, which Chrome
+  throttles or fully pauses in a backgrounded tab — and the entire
+  point of screen/area recording is that the user switches away from
+  the recorder tab to whatever they're recording. Switched to
+  `setInterval`, which keeps running regardless of tab visibility.
+- Its temporary source `<video>` element was created but never attached
+  to the document — held only by a JS reference. An off-tree video
+  element isn't guaranteed to keep decoding frames reliably in every
+  browser configuration. Now appended to the document (positioned
+  off-screen, not `display:none`, since some engines also deprioritize
+  decode for non-rendered elements). Found this by accident while
+  testing the first fix, and it turned out to be a second, independent
+  contributor to the same symptom.
+
+Both are standard, defensible corrections for exactly this class of bug
+(continuous background canvas capture). **What I could not do**: get a
+clean automated test confirming the original symptom is fully resolved
+end-to-end. Two different mock approaches for the underlying tab-capture
+stream (a canvas-based mock, then Chrome's built-in fake video device)
+both hit sandbox-specific frame-delivery quirks that prevented a
+conclusive signal — the same category of limitation already documented
+for `chrome.tabCapture` itself, which fundamentally requires a real
+loaded extension and browser to exercise properly. If this is still
+happening after updating, please test directly and report back whether
+it's specific to "Select Area" or also affects plain Screen/Window
+recording — those use a completely different, browser-native capture
+path, and a fix there would need to look elsewhere entirely.
+
+**Upload media to the Gallery.** A new 📤 button lets you add an
+existing image or video file from disk — it's saved with the same
+`screenshot`/`recording` types as a capture, so it automatically gets
+every existing capability for free: Edit (the screenshot editor for
+images, the video editor for videos), Share (with the same
+password/expiration controls), Download, tags, and bulk actions. No new
+infrastructure needed — this is exactly why the type-based architecture
+throughout this project has paid off.
+- A real bug was caught and fixed during testing, not shipped silently:
+  duration detection for uploaded videos initially failed
+  (`duration: 0`) for files where `video.duration` reads back as
+  exactly `0` rather than `Infinity`/`NaN` at the `loadedmetadata`
+  stage — a case the existing "seek to force duration calculation"
+  workaround didn't cover, since `isFinite(0)` is true. Fixed by
+  checking for any non-positive-or-non-finite value, not just the
+  `Infinity`/`NaN` cases. Checked (and confirmed clean) whether the same
+  narrow check existed in `video-editor.js` or `recorder.js` — it didn't;
+  only the new upload handler had it.
+- Verified with 9 checks: correct type/dimensions/thumbnail for both
+  image and video uploads, correct duration detection, uploaded media
+  appearing in the grid and correctly routing to the right editor
+  (image → screenshot editor, video → video editor) via the existing
+  infrastructure unchanged, and rejection of non-image/video file types.
+
+**v1.16.0 — Video editor: trim, speed, effects, resolution**
+
+New `video-editor/` page for editing recordings — trim, playback speed,
+visual effects, and resolution — plus entry points from the Gallery
+(card button + detail modal, now correctly labeled "Edit Video" for
+recordings) and directly from the recorder's Done view ("✂️ Trim, Speed
+& Effects…", which auto-saves the recording first if it hasn't been
+saved yet).
+
+**How it works**: there's no server-side video processing or bundled
+ffmpeg/WASM codec library in this project, so editing works via the
+standard client-side technique — play the source video through a
+canvas (with the requested effects/speed/resolution applied per frame)
+and re-capture that canvas via `MediaRecorder`. Two real technical
+risks were identified and designed around up front, not discovered
+after something broke:
+- Used `setInterval` instead of `requestAnimationFrame` to drive the
+  export's frame-draw loop — `requestAnimationFrame` throttles or fully
+  pauses in a backgrounded/inactive tab, which would have silently
+  corrupted or hung an export if the user switched tabs mid-export.
+- Creates a fresh, temporary `<video>` element per export rather than
+  reusing the live-preview element, since
+  `AudioContext.createMediaElementSource()` can only be called once per
+  media element — a second call throws.
+
+**Features:**
+- **Trim**: drag start/end handles on a timeline; playback preview is
+  constrained to the trimmed range.
+- **Speed**: 0.25×–2×, applied via the video's own `playbackRate`
+  (natural pitch-preserving speed change, not a chipmunk/slowed-voice
+  effect).
+- **Effects**: brightness, contrast, saturation, and blur sliders, plus
+  one-click grayscale/sepia — all shown live on the preview via CSS
+  `filter` before you commit to exporting, so what you see is what you
+  get.
+- **Resolution**: Original/1080p/720p/480p downscaling (never
+  upscales — that doesn't add real quality, so it isn't offered).
+- Exporting saves as a **new** recording in the Gallery (or a plain
+  download) rather than overwriting the original — trimming a highlight
+  out of a longer recording shouldn't cost you the full original.
+
+**Verification — the export pipeline first, in isolation, before any UI
+was built on top of it**: 8 checks against a synthetic multi-color
+video with real audio confirmed trim duration accurate to within 0.6s,
+the trimmed clip's first frame matching the *correct* source timestamp
+(not the beginning), 2× speed correctly halving duration, grayscale
+genuinely desaturating output pixels (not just labeled as applied),
+exact pixel-dimension match on a real downscale, and audio surviving
+the export. Then 15 more checks against the full UI end-to-end
+(timeline dragging, live speed/filter preview, export-to-save flow
+creating a new capture rather than overwriting), plus 4 checks on the
+two entry points, plus a full 7-page regression pass — 27 new checks
+in total, zero regressions elsewhere.
+
+**v1.15.0 — Recordings over 100MB**
+
+Traced this to three separate constraints, not just one config value:
+
+- **The obvious one**: `MAX_FILE_SIZE_MB` was hardcoded to 100. Raised
+  the default to 2048 (2GB), still configurable via env var. Applies
+  uniformly to both upload destinations (the direct backend upload and
+  R2 presigned uploads) — same setting, no duplicate limit anywhere.
+- **A deeper one, found by reading the actual code, not assumed**: the
+  direct-upload path (`/api/upload`) reads the entire file into server
+  memory before forwarding it to Supabase Storage. Confirmed the
+  Supabase Python client's `bucket.upload()` only accepts raw bytes, not
+  a stream — this is a genuine architectural constraint, not something
+  fixable from application code without switching storage clients.
+  What *was* fixable: oversized files now get rejected incrementally
+  (checked every 4MB chunk against the limit) instead of being fully
+  buffered first only to be rejected afterward — cheaper for the
+  server, and doesn't scale badly with how oversized a rejected upload
+  happens to be.
+- **The one that would have silently undermined the whole fix**: the
+  extension's own upload code had a flat `xhr.timeout = 5 minutes` on
+  every upload, regardless of size. At realistic home upload speeds, a
+  1GB+ recording can legitimately take longer than that while making
+  perfectly good progress the whole time — and would have been killed
+  by this timeout even after the backend fix above. Replaced with a
+  stall watchdog: it only aborts if progress genuinely *stops* for 60+
+  seconds, not because the transfer is simply taking a while. Also
+  found and raised the R2 presigned upload URL's validity window (15
+  minutes → 1 hour), which a large upload on a slow connection could
+  similarly outlast.
+
+**Verification**: a new backend test directly proves the actual
+scenario — a 120MB recording (over the old 100MB cap) now uploads
+successfully. A new extension test simulates a 500MB upload with slow
+but steady progress succeeding (would have failed the old fixed
+timeout) and a genuinely stalled upload being correctly caught and
+aborted with a clear message. 103/103 backend tests pass, 6/6 page-load
+regression clean.
+
+**Known limitation, stated plainly rather than glossed over**: whatever
+host runs this backend (Render or otherwise) may impose its own
+platform-level request size limit ahead of this application entirely —
+that's outside anything this app's own settings can control, and I
+don't have a verified, current answer for what that limit is on any
+specific host or plan. This is exactly why R2 is the right destination
+for very large recordings regardless: the file bytes go directly from
+the browser to R2 storage and never pass through this backend's own
+HTTP endpoint at all, sidestepping both this app's memory constraints
+and any platform-level cap you can't see or control from here.
+
+**v1.14.0 — Corporate features: password-protected links, forced expiration, bulk actions, tags**
+
+Built after asking which corporate priorities mattered most — picked:
+security (password-protected share links, forced expiration) and
+organization at scale (bulk actions + tags in the Gallery).
+
+**Security — password-protected share links:**
+- Salted PBKDF2 password hashing (`app/services/share_security.py`) —
+  the plaintext password is never stored.
+- `POST /api/share/{id}/password` sets/changes/removes a password on any
+  existing share, regardless of which upload destination created it.
+- The share viewer (`/s/{id}`) shows a password form instead of content
+  when protected; submitting the correct password renders the content
+  directly in that same response — no session/cookie system needed,
+  since none exists anywhere else in this backend.
+- A short-lived signed token lets the page's own Download link work
+  right after unlocking, without asking for the password a second time.
+- The JSON API (`GET /api/share/{id}`) also requires the password when
+  a share is protected, so the extension itself can't bypass what a
+  browser visiting the link can't.
+
+**Security — forced expiration:**
+- New `DEFAULT_SHARE_EXPIRY_DAYS` setting: when an admin sets this,
+  *every* new share automatically gets that expiration applied at
+  creation time — a real org-wide retention policy, not a per-user
+  opt-in. Applies uniformly whether the upload goes to the Supabase
+  backend or Cloudflare R2.
+- Confirmed the existing per-share expiration endpoint
+  (`/api/media/{id}/expire`) already worked generically for any share
+  regardless of storage destination — no duplicate route needed, just a
+  UI to actually use it.
+
+**Security — extension UI:**
+- A shared, reusable password + expiration control block
+  (`shared/share-security-ui.js`) wired into all four places a share
+  link can be created (popup, Gallery, editor, recorder) — appears right
+  next to the share URL once a link exists. Skipped for Google Drive
+  links, since those are Google's own and we have no way to gate them.
+
+**Organization at scale — Gallery bulk actions:**
+- A "Select" mode toggle puts a checkbox on every card; a bulk action
+  bar appears once 1+ items are selected with Download, Delete, Add Tag,
+  Select All, and Clear.
+- Bulk download triggers each file's download with a short stagger, so
+  the browser doesn't treat it as a download-spam burst and silently
+  block some of them.
+
+**Organization at scale — tags:**
+- Add/remove tags on any capture from its detail view; tag chips show
+  on grid cards.
+- A tag filter row above the grid (only appears once tags exist)
+  narrows the view to one tag at a time.
+- Search now also matches tags (`#tagname` or the bare word).
+
+**Verification**: 101/101 backend tests (11 new for the password/token
+crypto primitives, 18 new for the route-level password/expiry behavior,
+zero regressions in the existing 72), a live server smoke test, and
+20 new extension-side functional checks across two dedicated test
+passes — one driving the actual Gallery share flow end-to-end and
+confirming the correct backend calls fire with the correct data, the
+other exercising the full bulk-select → bulk-tag → bulk-delete →
+modal-tag-add/remove lifecycle together. Three real test-authoring bugs
+were caught and fixed along the way (a monkeypatch targeting the wrong
+module reference for a `from x import y` import, a stale DOM handle
+after a card click triggered a full grid re-render, and a tag-removal
+check that didn't account for a tag already applied by an earlier bulk
+operation) — each fixed by tracing the actual cause rather than loosening
+the assertion.
 
 **v1.13.0 — Fixed irregular gallery card sizing**
 

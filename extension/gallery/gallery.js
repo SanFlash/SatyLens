@@ -3,6 +3,7 @@ import { CaptureStore } from '../shared/storage.js';
 import { copyImageBlobToClipboard, copyTextToClipboard } from '../shared/clipboard.js';
 import { getApiBaseUrl, setApiBaseUrl } from '../shared/api.js';
 import { createShareLink, getUploadDestination, setUploadDestination } from '../shared/share.js';
+import { mountShareSecurityControls } from '../shared/share-security-ui.js';
 import {
   isDriveConnected,
   getDriveAccountInfo,
@@ -21,7 +22,7 @@ import {
   getAnalyticsClientId
 } from '../shared/analytics.js';
 import { getR2LinkHistory, revokeR2Link } from '../shared/r2.js';
-import { formatDate, formatBytes, formatDuration, debounce } from '../shared/utils.js';
+import { formatDate, formatBytes, formatDuration, debounce, generateImageThumbnail, generateVideoThumbnail, timestampForFilename } from '../shared/utils.js';
 
 const $ = (sel) => document.querySelector(sel);
 const grid = $('#grid');
@@ -33,6 +34,9 @@ let searchTerm = '';
 let sortMode = 'newest';
 let activeCapture = null; // the capture shown in the detail modal
 let objectUrlCache = new Map(); // id -> object URL, revoked on unload
+let selectMode = false;
+let selectedIds = new Set();
+let activeTagFilter = null;
 
 const highlightId = new URLSearchParams(location.search).get('highlight');
 
@@ -63,9 +67,12 @@ async function loadCaptures() {
 function getFiltered() {
   let list = allCaptures;
   if (activeFilter !== 'all') list = list.filter((c) => c.type === activeFilter);
+  if (activeTagFilter) list = list.filter((c) => (c.tags || []).includes(activeTagFilter));
   if (searchTerm) {
-    const q = searchTerm.toLowerCase();
-    list = list.filter((c) => c.name.toLowerCase().includes(q));
+    const q = searchTerm.toLowerCase().replace(/^#/, '');
+    list = list.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.tags || []).some((t) => t.toLowerCase().includes(q))
+    );
   }
   const sorted = [...list];
   switch (sortMode) {
@@ -84,6 +91,14 @@ function getFiltered() {
   return sorted;
 }
 
+function getAllTags() {
+  const tagSet = new Set();
+  for (const c of allCaptures) {
+    for (const t of c.tags || []) tagSet.add(t);
+  }
+  return [...tagSet].sort((a, b) => a.localeCompare(b));
+}
+
 /* ------------------------------ Rendering ------------------------------ */
 
 function render() {
@@ -94,16 +109,48 @@ function render() {
   for (const capture of list) {
     grid.appendChild(buildCard(capture));
   }
+  renderTagFilterRow();
+  updateBulkBar();
+}
+
+function renderTagFilterRow() {
+  const row = $('#tagFilterRow');
+  const tags = getAllTags();
+  if (tags.length === 0) {
+    row.classList.add('cf-hidden');
+    row.innerHTML = '';
+    return;
+  }
+  row.classList.remove('cf-hidden');
+  row.innerHTML = '';
+  for (const tag of tags) {
+    const chip = document.createElement('button');
+    chip.className = 'cf-tag-chip' + (tag === activeTagFilter ? ' cf-tag-active' : '');
+    chip.textContent = `#${tag}`;
+    chip.addEventListener('click', () => {
+      activeTagFilter = activeTagFilter === tag ? null : tag;
+      render();
+    });
+    row.appendChild(chip);
+  }
 }
 
 function buildCard(capture) {
   const card = document.createElement('div');
   card.className = 'cf-card';
   if (capture.id === highlightId) card.classList.add('cf-highlight');
+  if (selectMode) card.classList.add('cf-select-mode');
+  if (selectedIds.has(capture.id)) card.classList.add('cf-selected');
   card.dataset.id = capture.id;
 
   const thumb = document.createElement('div');
   thumb.className = 'cf-card-thumb';
+  if (selectMode) {
+    const selectBox = document.createElement('div');
+    selectBox.className = 'cf-card-select-box' + (selectedIds.has(capture.id) ? ' cf-checked' : '');
+    selectBox.textContent = selectedIds.has(capture.id) ? '✓' : '';
+    thumb.appendChild(selectBox);
+  }
   if (capture.thumbnail) {
     const img = document.createElement('img');
     img.src = capture.thumbnail;
@@ -132,23 +179,42 @@ function buildCard(capture) {
       <span>${capture.uploaded ? '🔗 Shared' : ''}</span>
     </div>
   `;
+  if (capture.tags && capture.tags.length) {
+    const tagsRow = document.createElement('div');
+    tagsRow.className = 'cf-card-tags';
+    for (const tag of capture.tags) {
+      const chip = document.createElement('span');
+      chip.className = 'cf-card-tag';
+      chip.textContent = `#${tag}`;
+      tagsRow.appendChild(chip);
+    }
+    body.appendChild(tagsRow);
+  }
 
   const actions = document.createElement('div');
   actions.className = 'cf-card-actions';
-  const canEdit = capture.type === 'screenshot';
+  const canEditImage = capture.type === 'screenshot';
+  const canEditVideo = capture.type === 'recording';
   actions.innerHTML = `
     <button data-act="download">Download</button>
-    ${canEdit ? '<button data-act="edit">Edit</button>' : ''}
+    ${canEditImage ? '<button data-act="edit">Edit</button>' : ''}
+    ${canEditVideo ? '<button data-act="edit-video">Edit</button>' : ''}
     <button data-act="delete">Delete</button>
   `;
   actions.querySelector('[data-act="download"]').addEventListener('click', (e) => {
     e.stopPropagation();
     downloadCapture(capture);
   });
-  if (canEdit) {
+  if (canEditImage) {
     actions.querySelector('[data-act="edit"]').addEventListener('click', (e) => {
       e.stopPropagation();
       openEditor(capture.id);
+    });
+  }
+  if (canEditVideo) {
+    actions.querySelector('[data-act="edit-video"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openVideoEditor(capture.id);
     });
   }
   actions.querySelector('[data-act="delete"]').addEventListener('click', async (e) => {
@@ -161,15 +227,227 @@ function buildCard(capture) {
 
   card.appendChild(thumb);
   card.appendChild(body);
-  card.appendChild(actions);
-  card.addEventListener('click', () => openModal(capture));
+  if (!selectMode) card.appendChild(actions);
+  card.addEventListener('click', () => {
+    if (selectMode) {
+      toggleCardSelection(capture.id);
+    } else {
+      openModal(capture);
+    }
+  });
   return card;
+}
+
+/* ------------------------------ Bulk selection ------------------------------ */
+
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  if (!selectMode) selectedIds.clear();
+  $('#selectModeBtn').classList.toggle('cf-active-icon', selectMode);
+  render();
+}
+
+function toggleCardSelection(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  render();
+}
+
+function updateBulkBar() {
+  const bar = $('#bulkActionBar');
+  if (!selectMode || selectedIds.size === 0) {
+    bar.classList.add('cf-hidden');
+    return;
+  }
+  bar.classList.remove('cf-hidden');
+  $('#bulkSelectedCount').textContent = `${selectedIds.size} selected`;
+}
+
+function getSelectedCaptures() {
+  return allCaptures.filter((c) => selectedIds.has(c.id));
+}
+
+async function bulkDownload() {
+  const items = getSelectedCaptures();
+  if (items.length === 0) return;
+  for (const capture of items) {
+    downloadCapture(capture);
+    // Small stagger so the browser doesn't treat this as a download-spam
+    // burst and silently block some of them.
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  showToast(`Downloaded ${items.length} capture${items.length === 1 ? '' : 's'}.`);
+}
+
+async function bulkDelete() {
+  const items = getSelectedCaptures();
+  if (items.length === 0) return;
+  if (!confirm(`Delete ${items.length} selected capture${items.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
+  for (const capture of items) {
+    await CaptureStore.delete(capture.id);
+  }
+  showToast(`Deleted ${items.length} capture${items.length === 1 ? '' : 's'}.`);
+  selectedIds.clear();
+  await loadCaptures();
+}
+
+async function bulkAddTag() {
+  const items = getSelectedCaptures();
+  if (items.length === 0) return;
+  const tag = prompt(`Add a tag to ${items.length} selected capture${items.length === 1 ? '' : 's'}:`);
+  const cleaned = (tag || '').trim().toLowerCase().replace(/^#/, '');
+  if (!cleaned) return;
+  for (const capture of items) {
+    const tags = new Set(capture.tags || []);
+    tags.add(cleaned);
+    await CaptureStore.update(capture.id, { tags: [...tags] });
+  }
+  showToast(`Tagged ${items.length} capture${items.length === 1 ? '' : 's'} with #${cleaned}.`);
+  await loadCaptures();
+}
+
+function bulkSelectAll() {
+  const list = getFiltered();
+  for (const c of list) selectedIds.add(c.id);
+  render();
+}
+
+function bulkClearSelection() {
+  selectedIds.clear();
+  render();
 }
 
 /* ------------------------------ Download / Copy ------------------------------ */
 
 function openEditor(id) {
   chrome.tabs.create({ url: chrome.runtime.getURL(`editor/editor.html?id=${id}`) });
+}
+
+function openVideoEditor(id) {
+  chrome.tabs.create({ url: chrome.runtime.getURL(`video-editor/video-editor.html?id=${id}`) });
+}
+
+/* ------------------------------ Upload media (image/video) ------------------------------ */
+
+function getImageDimensions(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read this image file — it may be corrupted or an unsupported format.'));
+    };
+    img.src = url;
+  });
+}
+
+function getVideoMetadata(blob) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(blob);
+    video.muted = true;
+    video.src = url;
+    video.addEventListener('loadedmetadata', async () => {
+      let duration = video.duration;
+      // Some containers (including, notably, files produced by
+      // MediaRecorder) don't finalize the duration field the normal
+      // way -- it can read back as Infinity, NaN, OR literally 0 at the
+      // loadedmetadata stage (which varies by Chrome version/file, not
+      // just one consistent placeholder value) until a seek forces the
+      // browser to actually calculate the real duration. Checking only
+      // isFinite() misses the "reads back as exactly 0" case, since 0
+      // genuinely is finite -- applied here for any non-positive or
+      // non-finite value, not just the Infinity/NaN cases.
+      if (!isFinite(duration) || duration <= 0) {
+        duration = await new Promise((res) => {
+          video.addEventListener('seeked', function onSeeked() {
+            video.removeEventListener('seeked', onSeeked);
+            res(video.duration);
+          });
+          video.currentTime = 1e101;
+        });
+      }
+      URL.revokeObjectURL(url);
+      resolve({ width: video.videoWidth, height: video.videoHeight, duration: isFinite(duration) ? duration : 0 });
+    });
+    video.addEventListener('error', () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read this video file — it may be corrupted or an unsupported format.'));
+    });
+  });
+}
+
+async function handleMediaUpload(file) {
+  if (!file) return;
+  const isImage = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/');
+  if (!isImage && !isVideo) {
+    showToast('Only image and video files can be uploaded.', true);
+    return;
+  }
+  if (file.size === 0) {
+    showToast('That file is empty.', true);
+    return;
+  }
+
+  showToast(`Adding ${file.name}…`);
+  try {
+    let capture;
+    if (isImage) {
+      const [{ width, height }, thumbnail] = await Promise.all([
+        getImageDimensions(file),
+        generateImageThumbnail(file).catch(() => null)
+      ]);
+      capture = {
+        id: crypto.randomUUID(),
+        type: 'screenshot',
+        name: file.name || `upload-${timestampForFilename()}.png`,
+        mimeType: file.type,
+        blob: file,
+        thumbnail,
+        size: file.size,
+        createdAt: Date.now(),
+        duration: 0,
+        width,
+        height,
+        uploaded: false,
+        shareUrl: null,
+        shareId: null
+      };
+    } else {
+      const [{ width, height, duration }, thumbnail] = await Promise.all([
+        getVideoMetadata(file),
+        generateVideoThumbnail(file).catch(() => null)
+      ]);
+      capture = {
+        id: crypto.randomUUID(),
+        type: 'recording',
+        name: file.name || `upload-${timestampForFilename()}.webm`,
+        mimeType: file.type,
+        blob: file,
+        thumbnail,
+        size: file.size,
+        createdAt: Date.now(),
+        duration,
+        width,
+        height,
+        uploaded: false,
+        shareUrl: null,
+        shareId: null
+      };
+    }
+    await CaptureStore.add(capture);
+    track('MEDIA_UPLOADED', { feature: 'gallery', action: isImage ? 'upload_image' : 'upload_video' });
+    showToast(`Added to Gallery ✅ — Edit or Share it like any other capture.`);
+    await loadCaptures();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || 'Could not add that file.', true);
+  }
 }
 
 function downloadCapture(capture) {
@@ -225,6 +503,7 @@ function openModal(capture) {
     metaLines.push(`Duration: ${formatDuration(capture.duration)}`);
   }
   $('#modalMeta').innerHTML = metaLines.map((l) => `<div>${l}</div>`).join('');
+  renderModalTags();
 
   const uploadStatus = $('#modalUploadStatus');
   const shareResult = $('#mShareResult');
@@ -238,13 +517,56 @@ function openModal(capture) {
   }
 
   $('#mCopy').disabled = capture.type !== 'screenshot';
-  $('#mEdit').classList.toggle('cf-hidden', capture.type !== 'screenshot');
+  $('#mEdit').classList.remove('cf-hidden');
+  $('#mEdit').textContent = capture.type === 'recording' ? 'Edit Video' : 'Edit';
   overlay.classList.remove('cf-hidden');
 }
 
 function closeModal() {
   $('#modalOverlay').classList.add('cf-hidden');
   activeCapture = null;
+}
+
+/* ------------------------------ Tags (modal) ------------------------------ */
+
+function renderModalTags() {
+  const container = $('#modalTags');
+  container.innerHTML = '';
+  const tags = (activeCapture && activeCapture.tags) || [];
+  for (const tag of tags) {
+    const chip = document.createElement('span');
+    chip.className = 'cf-tag-chip-removable';
+    chip.innerHTML = `#${tag} <button aria-label="Remove tag">✕</button>`;
+    chip.querySelector('button').addEventListener('click', () => removeTagFromActiveCapture(tag));
+    container.appendChild(chip);
+  }
+}
+
+async function addTagToActiveCapture() {
+  if (!activeCapture) return;
+  const input = $('#modalTagInput');
+  const cleaned = input.value.trim().toLowerCase().replace(/^#/, '');
+  if (!cleaned) return;
+  const tags = new Set(activeCapture.tags || []);
+  if (tags.has(cleaned)) {
+    input.value = '';
+    return;
+  }
+  tags.add(cleaned);
+  await CaptureStore.update(activeCapture.id, { tags: [...tags] });
+  activeCapture = await CaptureStore.get(activeCapture.id);
+  input.value = '';
+  renderModalTags();
+  await loadCaptures();
+}
+
+async function removeTagFromActiveCapture(tag) {
+  if (!activeCapture) return;
+  const tags = (activeCapture.tags || []).filter((t) => t !== tag);
+  await CaptureStore.update(activeCapture.id, { tags });
+  activeCapture = await CaptureStore.get(activeCapture.id);
+  renderModalTags();
+  await loadCaptures();
 }
 
 async function onModalShare() {
@@ -255,7 +577,7 @@ async function onModalShare() {
   try {
     btn.disabled = true;
     progressWrap.classList.remove('cf-hidden');
-    const { shareUrl } = await createShareLink(activeCapture, (loaded, total) => {
+    const { shareUrl, destination } = await createShareLink(activeCapture, (loaded, total) => {
       progressBar.style.width = Math.round((loaded / total) * 100) + '%';
     });
     activeCapture = await CaptureStore.get(activeCapture.id);
@@ -264,9 +586,20 @@ async function onModalShare() {
     $('#modalUploadStatus').textContent = 'Uploaded ✅';
     showToast('Share link created 🔗');
     await loadCaptures();
+
+    const shareResultEl = $('#mShareResult');
+    const existingControls = shareResultEl.querySelector('.cf-share-security-mount');
+    if (existingControls) existingControls.remove();
+    if (destination !== 'drive') {
+      const shareId = shareUrl.split('/').filter(Boolean).pop();
+      const mount = mountShareSecurityControls(shareResultEl, shareId, showToast);
+      mount.classList.add('cf-share-security-mount');
+    }
   } catch (err) {
-    console.error(err);
-    showToast(err.message || 'Upload failed. Your capture is safely stored locally.', true);
+    if (!err.userCanceled) {
+      console.error(err);
+      showToast(err.message || 'Upload failed. Your capture is safely stored locally.', true);
+    }
   } finally {
     btn.disabled = false;
     progressWrap.classList.add('cf-hidden');
@@ -510,13 +843,39 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
   });
 
+  $('#uploadMediaBtn').addEventListener('click', () => $('#uploadMediaInput').click());
+  $('#uploadMediaInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    handleMediaUpload(file);
+    e.target.value = ''; // allow re-selecting the same file again later
+  });
+
+  $('#selectModeBtn').addEventListener('click', toggleSelectMode);
+  $('#bulkTagBtn').addEventListener('click', bulkAddTag);
+  $('#bulkDownloadBtn').addEventListener('click', bulkDownload);
+  $('#bulkDeleteBtn').addEventListener('click', bulkDelete);
+  $('#bulkSelectAllBtn').addEventListener('click', bulkSelectAll);
+  $('#bulkClearBtn').addEventListener('click', bulkClearSelection);
+
+  $('#modalTagAddBtn').addEventListener('click', addTagToActiveCapture);
+  $('#modalTagInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTagToActiveCapture();
+    }
+  });
+
   $('#modalClose').addEventListener('click', closeModal);
   $('#modalOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'modalOverlay') closeModal();
   });
   $('#mCopy').addEventListener('click', () => activeCapture && copyCapture(activeCapture));
   $('#mDownload').addEventListener('click', () => activeCapture && downloadCapture(activeCapture));
-  $('#mEdit').addEventListener('click', () => activeCapture && openEditor(activeCapture.id));
+  $('#mEdit').addEventListener('click', () => {
+    if (!activeCapture) return;
+    if (activeCapture.type === 'recording') openVideoEditor(activeCapture.id);
+    else openEditor(activeCapture.id);
+  });
   $('#mShare').addEventListener('click', onModalShare);
   $('#mDelete').addEventListener('click', onModalDelete);
   $('#mCopyShareUrl').addEventListener('click', async () => {

@@ -25,7 +25,7 @@ from app.models.media import (
     UploadUrlResponse,
 )
 from app.services import r2_storage
-from app.services.sharing import build_share_url, generate_share_id
+from app.services.sharing import build_share_url, compute_default_expiry, generate_share_id
 from app.services.storage import (
     delete_capture_row,
     get_capture_row,
@@ -103,7 +103,7 @@ async def create_upload_url(payload: UploadUrlRequest):
             "size_bytes": payload.file_size,  # client-claimed; verified for real in /complete
             "duration_seconds": 0,
             "created_at": now.isoformat(),
-            "expires_at": None,
+            "expires_at": compute_default_expiry(),
             "storage_provider": "r2",
             "status": "pending",
             "client_id": payload.client_id,
