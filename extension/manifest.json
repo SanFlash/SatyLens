@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SatyLens",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "description": "Capture. Record. Share. Screenshots and screen recordings straight from Chrome.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAynWWb3vyqnlH8GDctVkd030x8Z5DgmdsQOjOj/+rpaP+BajdoLmpn5FfyG+2y1SJdpU//an+/hcVH/XrqwEXTIdx1oHdqVXLK/B18B6lXxLdwy5A9kiAQHEf+yeO+MIckg+zdKOkTXynQuNLm67bJPEsZGbCukmfx0I1Sb8trtHpPO8Z9y7VUB1qbTJAcQxTt/n2Uim99PS9HrALtKFAcj6fUv2fQ5QO4fRssCefEmLU0zsqXqBgYoYLExFrUMd1ru8+lF1+0+ntzZk5lq5Vb7OA8kYNtjIrMmAi1zaB+u6rYpRJyEdLlp+GA2OBKykndGTgSYxpOfNv4H2Osm7dlwIDAQAB",
   "icons": {

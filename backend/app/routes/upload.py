@@ -210,6 +210,34 @@ async def diagnose_supabase_setup():
         if matching_bucket:
             result["bucket_exists"] = True
             result["bucket_is_public"] = matching_bucket.public
+            result["bucket_file_size_limit_bytes"] = matching_bucket.file_size_limit
+
+            # This is a real, common cause of "large files fail, small
+            # ones succeed" that has nothing to do with this
+            # application's own code: Supabase Storage buckets have
+            # their OWN size limit, separate from anything checked here
+            # or in MAX_FILE_SIZE_MB. A bucket created via the dashboard
+            # commonly defaults to one (50MB is a frequent default)
+            # unless explicitly changed. Fix it automatically here
+            # rather than just reporting it, since "visit this URL" is
+            # the whole point of this endpoint and there's no reason to
+            # make that a two-step, SQL-Editor-required process when the
+            # Storage API can do it directly.
+            if matching_bucket.file_size_limit is not None:
+                try:
+                    client.storage.update_bucket(settings.SUPABASE_BUCKET, {"file_size_limit": None})
+                    result["bucket_file_size_limit_fix"] = (
+                        f"Found a bucket-level file size limit of {matching_bucket.file_size_limit} bytes "
+                        f"(~{matching_bucket.file_size_limit / (1024*1024):.0f}MB) and removed it automatically. "
+                        f"This was almost certainly why larger uploads were failing with "
+                        f"'Upload to storage failed (400)' while smaller ones succeeded. Try uploading again."
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    result["bucket_file_size_limit_fix"] = (
+                        f"Found a bucket-level file size limit of {matching_bucket.file_size_limit} bytes "
+                        f"but could not remove it automatically: {exc}. Fix it manually in the Supabase "
+                        f"dashboard: Storage -> click the bucket -> settings (gear icon) -> File size limit."
+                    )
         else:
             result["bucket_exists"] = False
             result["bucket_problem"] = (

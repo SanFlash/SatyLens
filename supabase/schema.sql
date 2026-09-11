@@ -178,3 +178,32 @@ create policy "no public access" on public.sessions for all using (false) with c
 drop policy if exists "no public access" on public.events;
 create policy "no public access" on public.events for all using (false) with check (false);
 
+-- ============================================================
+-- Storage bucket file size limit
+-- ============================================================
+-- A SEPARATE constraint from everything above: Supabase Storage
+-- buckets have their OWN size limit, set at the bucket level
+-- (storage.buckets.file_size_limit), independent of anything in this
+-- application's own database schema or backend code (MAX_FILE_SIZE_MB
+-- in the backend's .env only affects the legacy /api/upload endpoint,
+-- which the extension no longer even calls). A bucket created via the
+-- Supabase dashboard's "New bucket" button commonly defaults to a
+-- limit (a frequent default is 50MB) unless explicitly raised when
+-- creating it or changed afterward -- if uploads fail specifically for
+-- LARGER files with an error like "Upload to storage failed (400)"
+-- while smaller files succeed, this is almost always why: Supabase's
+-- own Storage API rejects the upload before this backend is even
+-- involved in the direct-upload flow.
+--
+-- This removes that cap entirely (null = unlimited) for the bucket
+-- this project uses. Safe to re-run. If you used a bucket name other
+-- than 'captures' (matching a non-default SUPABASE_BUCKET), change the
+-- name below to match.
+update storage.buckets
+set file_size_limit = null
+where name = 'captures';
+
+-- Equivalent, if you'd rather do this by hand instead of via SQL:
+-- Supabase dashboard -> Storage -> click the bucket -> bucket settings
+-- (gear icon) -> "File size limit" -> clear it or set it very high.
+

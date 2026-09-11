@@ -159,14 +159,26 @@ usual culprits, in order of likelihood:
    signed URLs and works on private buckets), or, as a stopgap on old
    code, make the bucket public as the earlier version of this guide
    said to.
-4. **A reverse proxy or hosting platform's own request timeout** — this
+4. **The Supabase Storage bucket's own file size limit.** Separate from
+   everything above, and separate from `MAX_FILE_SIZE_MB` — buckets have
+   their OWN size cap (`storage.buckets.file_size_limit`), commonly
+   defaulted to something like 50MB when created via the dashboard.
+   If large uploads specifically fail with `Upload to storage failed
+   (400)` while smaller ones succeed, this is almost always why.
+   `GET /api/diagnostics/supabase` (see below) now detects and
+   automatically removes this limit for you — just visit it and retry.
+   To do it by hand instead: Supabase dashboard -> Storage -> click the
+   bucket -> settings (gear icon) -> File size limit -> clear it. Or via
+   SQL: `update storage.buckets set file_size_limit = null where name =
+   'captures';` (also included in `schema.sql`, safe to re-run).
+5. **A reverse proxy or hosting platform's own request timeout** — this
    used to be a real issue for large files on the old, since-replaced
    upload path (which routed the full file through this backend's own
    memory). The current signed-URL flow doesn't have this problem at
    all: your backend's own HTTP handlers are never in the path of the
    actual file transfer, so there's no file-size-dependent request for
    a platform timeout to catch.
-5. **CORS**, if you're testing from a browser context this backend's
+6. **CORS**, if you're testing from a browser context this backend's
    `ALLOWED_EXTENSION_ORIGINS` / CORS configuration doesn't recognize.
    Check the browser console's Network tab for a CORS error specifically
    (distinct from a 404/500/503) if nothing else here explains it.

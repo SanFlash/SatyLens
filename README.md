@@ -420,6 +420,37 @@ retrieval/deletion, and the "Supabase not configured" path).
 
 ## Changelog
 
+**v1.23.0 — The actual cause of large-video upload failures: Supabase's own bucket size limit**
+
+"Upload to storage failed (400)" specifically for larger files, while
+smaller ones succeed, pointed at something completely separate from
+this project's own code: **Supabase Storage buckets have their own
+size limit** (`storage.buckets.file_size_limit`), independent of
+`MAX_FILE_SIZE_MB` or anything else in this backend. A bucket created
+via the dashboard commonly defaults to one (50MB is a frequently-cited
+default) unless explicitly raised — and Supabase's own Storage API
+rejects any upload exceeding it before this backend's code is even
+involved in the direct-upload flow.
+
+- `GET /api/diagnostics/supabase` now **detects this automatically and
+  fixes it** — not just reports it. If the configured bucket has a
+  file size limit set, it calls Supabase's own `update_bucket()` API to
+  remove it, and tells you plainly what it found and fixed. Falls back
+  to a clear manual-fix explanation if the automatic removal itself
+  fails (e.g. insufficient permissions).
+- `supabase/schema.sql` now also includes the equivalent SQL fix
+  directly (`update storage.buckets set file_size_limit = null where
+  name = 'captures';`), safe to re-run, for anyone who'd rather do it
+  by hand in the SQL Editor.
+- `supabase/SETUP.md`'s troubleshooting list updated with this as a
+  distinct, likely cause, separate from the other items already there.
+
+**Verified with 4 new tests**: the limit is correctly detected and
+removed automatically, a failure during the automatic removal is
+surfaced clearly rather than silently swallowed, and — importantly — a
+bucket that *doesn't* have a restrictive limit is left completely
+untouched (no unnecessary API call). **123/123 backend tests pass.**
+
 **v1.22.0 — Self-service Supabase setup diagnostic**
 
 Since I can't directly access your live Supabase project or deployed
