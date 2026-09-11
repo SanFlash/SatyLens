@@ -215,7 +215,7 @@ def test_diagnostics_detects_and_auto_fixes_a_restrictive_bucket_size_limit(conf
     body = res.json()
     assert body["bucket_file_size_limit_bytes"] == 52428800
     assert update_calls == [("captures", {"file_size_limit": None})]
-    assert "removed it automatically" in body["bucket_file_size_limit_fix"]
+    assert "removed" in body["bucket_file_size_limit_fix"].lower()
     assert "50MB" in body["bucket_file_size_limit_fix"] or "52" in body["bucket_file_size_limit_fix"]
 
 

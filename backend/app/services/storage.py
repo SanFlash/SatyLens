@@ -58,6 +58,45 @@ def upload_file_bytes(storage_path: str, data: bytes, mime_type: str) -> str:
     return generate_supabase_signed_read_url(storage_path)
 
 
+def ensure_bucket_has_no_size_limit(bucket_name: str) -> Optional[str]:
+    """Checks whether the given bucket has a restrictive file_size_limit
+    set, and if so, removes it via update_bucket(). This is what actually
+    makes "no upload size limit" true end-to-end: Supabase Storage
+    buckets have their own size cap, independent of anything this
+    application's code checks (MAX_FILE_SIZE_MB only ever affected the
+    legacy /api/upload endpoint) -- a bucket created via the dashboard
+    commonly defaults to one (50MB is a frequently-cited default) unless
+    explicitly changed, and without this check that default would
+    silently reintroduce a size ceiling this whole project is designed
+    not to have.
+
+    Called from create_upload_signed_url() on every real upload attempt
+    (not just when GET /api/diagnostics/supabase happens to be visited),
+    so this self-heals the moment updated code is deployed -- no separate
+    manual diagnostic step required.
+
+    Returns a short human-readable message if a limit was found and
+    successfully removed, or None if there was nothing to fix (bucket
+    doesn't exist, the listing itself failed, or the limit was already
+    unlimited). Raises if a limit WAS found but removing it failed --
+    deliberately left for the caller to decide how to handle: a caller
+    that wants this to be a non-blocking best-effort check (an upload
+    attempt that shouldn't fail just because this self-heal couldn't run)
+    should catch and ignore; a caller that wants to explain the failure
+    in detail (the diagnostic endpoint) can catch and report it."""
+    try:
+        client = get_supabase_client()
+        buckets = client.storage.list_buckets()
+    except Exception:  # noqa: BLE001 — can't even check; not this function's place to explain why
+        return None
+    matching = next((b for b in buckets if b.name == bucket_name), None)
+    if matching is None or matching.file_size_limit is None:
+        return None
+    old_limit = matching.file_size_limit
+    client.storage.update_bucket(bucket_name, {"file_size_limit": None})  # let a real failure here raise
+    return f"Removed a {old_limit} byte (~{old_limit / (1024*1024):.0f}MB) file size limit that was set on the '{bucket_name}' bucket."
+
+
 def generate_supabase_signed_read_url(storage_path: str, expires_in: Optional[int] = None) -> str:
     """A signed, time-limited READ url for a Supabase Storage object --
     used instead of get_public_url() everywhere a file actually needs to

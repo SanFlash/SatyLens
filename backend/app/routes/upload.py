@@ -47,6 +47,7 @@ from app.services.sharing import build_share_url, compute_default_expiry, genera
 from app.services.storage import (
     build_storage_path,
     create_signed_upload,
+    ensure_bucket_has_no_size_limit,
     get_capture_row,
     get_supabase_client,
     get_uploaded_object_size,
@@ -212,32 +213,26 @@ async def diagnose_supabase_setup():
             result["bucket_is_public"] = matching_bucket.public
             result["bucket_file_size_limit_bytes"] = matching_bucket.file_size_limit
 
-            # This is a real, common cause of "large files fail, small
-            # ones succeed" that has nothing to do with this
-            # application's own code: Supabase Storage buckets have
-            # their OWN size limit, separate from anything checked here
-            # or in MAX_FILE_SIZE_MB. A bucket created via the dashboard
-            # commonly defaults to one (50MB is a frequent default)
-            # unless explicitly changed. Fix it automatically here
-            # rather than just reporting it, since "visit this URL" is
-            # the whole point of this endpoint and there's no reason to
-            # make that a two-step, SQL-Editor-required process when the
-            # Storage API can do it directly.
-            if matching_bucket.file_size_limit is not None:
-                try:
-                    client.storage.update_bucket(settings.SUPABASE_BUCKET, {"file_size_limit": None})
+            # Uses the same self-heal logic create_upload_signed_url()
+            # runs on every real upload attempt now (see
+            # ensure_bucket_has_no_size_limit's docstring) -- this
+            # diagnostic endpoint reports what that check finds/fixes in
+            # full detail, including a failure to fix it, rather than
+            # duplicating the fix logic itself.
+            try:
+                fix_message = ensure_bucket_has_no_size_limit(settings.SUPABASE_BUCKET)
+                if fix_message:
                     result["bucket_file_size_limit_fix"] = (
-                        f"Found a bucket-level file size limit of {matching_bucket.file_size_limit} bytes "
-                        f"(~{matching_bucket.file_size_limit / (1024*1024):.0f}MB) and removed it automatically. "
-                        f"This was almost certainly why larger uploads were failing with "
-                        f"'Upload to storage failed (400)' while smaller ones succeeded. Try uploading again."
+                        f"{fix_message} This was almost certainly why larger uploads were failing "
+                        f"with 'Upload to storage failed (400)' while smaller ones succeeded. "
+                        f"Try uploading again."
                     )
-                except Exception as exc:  # noqa: BLE001
-                    result["bucket_file_size_limit_fix"] = (
-                        f"Found a bucket-level file size limit of {matching_bucket.file_size_limit} bytes "
-                        f"but could not remove it automatically: {exc}. Fix it manually in the Supabase "
-                        f"dashboard: Storage -> click the bucket -> settings (gear icon) -> File size limit."
-                    )
+            except Exception as exc:  # noqa: BLE001
+                result["bucket_file_size_limit_fix"] = (
+                    f"Found a bucket-level file size limit of {matching_bucket.file_size_limit} bytes "
+                    f"but could not remove it automatically: {exc}. Fix it manually in the Supabase "
+                    f"dashboard: Storage -> click the bucket -> settings (gear icon) -> File size limit."
+                )
         else:
             result["bucket_exists"] = False
             result["bucket_problem"] = (
@@ -312,6 +307,19 @@ async def create_upload_signed_url(payload: SignedUploadUrlRequest):
             detail="Cloud sharing is not configured on this server yet. "
             "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the backend .env file.",
         )
+
+    # Best-effort self-heal: if the bucket has a restrictive size limit
+    # set (a real, common cause of large uploads failing with "Upload to
+    # storage failed (400)" while small ones succeed — see
+    # ensure_bucket_has_no_size_limit's docstring), remove it before even
+    # generating this signed URL, rather than requiring a separate visit
+    # to the diagnostic endpoint first. Deliberately non-blocking: a
+    # failure here should never be the reason a real upload request fails
+    # outright, so any exception is swallowed at this call site.
+    try:
+        ensure_bucket_has_no_size_limit(settings.SUPABASE_BUCKET)
+    except Exception:  # noqa: BLE001 — see comment above
+        pass
 
     share_id = generate_share_id()
     now = datetime.now(timezone.utc)

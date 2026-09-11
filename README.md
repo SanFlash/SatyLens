@@ -420,6 +420,29 @@ retrieval/deletion, and the "Supabase not configured" path).
 
 ## Changelog
 
+**v1.23.1 — The bucket size-limit fix now applies automatically, not on a separate manual step**
+
+v1.23.0's fix only ran when someone visited `GET
+/api/diagnostics/supabase` — meaning a redeploy alone wasn't enough; the
+fix required a separate, easy-to-forget manual step. Moved the actual
+fix (`ensure_bucket_has_no_size_limit()`) into `POST
+/api/upload/signed-url` itself, so it runs automatically on every real
+upload attempt — a redeploy is now sufficient on its own; no extra visit
+to any diagnostic URL required for uploads to actually work.
+
+- Refactored the fix into a single shared function in `storage.py` so
+  the logic isn't duplicated between the two call sites.
+- Deliberately non-blocking at the signed-url endpoint: if the self-heal
+  itself fails for some reason, the upload request still proceeds rather
+  than failing on an unrelated internal check — the diagnostic endpoint
+  still surfaces that specific failure in full detail if visited, since
+  its whole job is to be maximally informative.
+- **3 new tests** proving the new behavior directly: a signed-url
+  request now genuinely triggers the bucket fix, the request still
+  succeeds even if the fix itself fails, and a bucket with no limit set
+  is left completely untouched (no unnecessary API call). **126/126
+  backend tests pass.**
+
 **v1.23.0 — The actual cause of large-video upload failures: Supabase's own bucket size limit**
 
 "Upload to storage failed (400)" specifically for larger files, while

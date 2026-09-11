@@ -263,3 +263,92 @@ def test_full_flow_end_to_end_for_a_large_file(fake_db_with_storage, configured_
     row = _find_row(fake_client, body["id"])
     assert row["size_bytes"] == 1_500_000_000
     assert row["status"] == "complete"
+
+
+class FakeBucketObjForSelfHeal:
+    def __init__(self, name, file_size_limit):
+        self.name = name
+        self.file_size_limit = file_size_limit
+
+
+def test_signed_url_request_self_heals_a_restrictive_bucket_size_limit(fake_db_with_storage, configured_settings):
+    """Direct proof of the new behavior: requesting a signed upload URL
+    -- the normal thing a real upload does -- now ALSO detects and
+    removes a restrictive bucket-level file_size_limit automatically,
+    without needing a separate visit to the diagnostic endpoint first."""
+    fake_client, fake_bucket, _ = fake_db_with_storage
+    update_calls = []
+
+    class ExtendedFakeStorage:
+        def from_(self, bucket_name):
+            return fake_bucket
+
+        def list_buckets(self):
+            return [FakeBucketObjForSelfHeal("captures", file_size_limit=52428800)]
+
+        def update_bucket(self, bucket_id, options):
+            update_calls.append((bucket_id, options))
+            return {"message": "updated"}
+
+    fake_client.storage = ExtendedFakeStorage()
+
+    res = client.post(
+        "/api/upload/signed-url",
+        json={"file_name": "big-video.webm", "content_type": "video/webm", "media_type": "recording", "client_id": "c1"},
+    )
+    assert res.status_code == 200
+    assert update_calls == [("captures", {"file_size_limit": None})]
+
+
+def test_signed_url_request_still_succeeds_even_if_the_self_heal_fails(fake_db_with_storage, configured_settings):
+    """The self-heal must never block a real upload request -- if
+    removing the bucket's size limit fails (e.g. a permissions issue),
+    the signed-url request should still succeed. The user will find out
+    about the actual limit when the direct upload itself hits it, which
+    at least gives an unambiguous, real error rather than a generic
+    failure on the (unrelated) signed-url request."""
+    fake_client, fake_bucket, _ = fake_db_with_storage
+
+    class ExtendedFakeStorage:
+        def from_(self, bucket_name):
+            return fake_bucket
+
+        def list_buckets(self):
+            return [FakeBucketObjForSelfHeal("captures", file_size_limit=52428800)]
+
+        def update_bucket(self, bucket_id, options):
+            raise Exception("403: insufficient permissions")
+
+    fake_client.storage = ExtendedFakeStorage()
+
+    res = client.post(
+        "/api/upload/signed-url",
+        json={"file_name": "big-video.webm", "content_type": "video/webm", "media_type": "recording", "client_id": "c1"},
+    )
+    assert res.status_code == 200
+    assert res.json()["success"] is True
+
+
+def test_signed_url_request_does_not_touch_bucket_when_no_limit_is_set(fake_db_with_storage, configured_settings):
+    fake_client, fake_bucket, _ = fake_db_with_storage
+    update_calls = []
+
+    class ExtendedFakeStorage:
+        def from_(self, bucket_name):
+            return fake_bucket
+
+        def list_buckets(self):
+            return [FakeBucketObjForSelfHeal("captures", file_size_limit=None)]
+
+        def update_bucket(self, bucket_id, options):
+            update_calls.append((bucket_id, options))
+            return {"message": "updated"}
+
+    fake_client.storage = ExtendedFakeStorage()
+
+    res = client.post(
+        "/api/upload/signed-url",
+        json={"file_name": "clip.webm", "content_type": "video/webm", "media_type": "recording", "client_id": "c1"},
+    )
+    assert res.status_code == 200
+    assert update_calls == []
