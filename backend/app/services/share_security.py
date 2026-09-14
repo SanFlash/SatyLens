@@ -37,10 +37,12 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, stored_hash: str) -> bool:
     try:
         salt_hex, digest_hex = stored_hash.split("$", 1)
-    except ValueError:
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(digest_hex)
+        if len(salt) != 16 or len(expected) != 32:
+            return False
+    except (ValueError, AttributeError, TypeError):
         return False
-    salt = bytes.fromhex(salt_hex)
-    expected = bytes.fromhex(digest_hex)
     actual = hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode("utf-8"), salt, _PBKDF2_ITERATIONS)
     return hmac.compare_digest(actual, expected)
 

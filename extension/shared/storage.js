@@ -21,10 +21,16 @@ function openDb() {
         store.createIndex('type', 'type', { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => { db.close(); dbPromise = null; };
+      db.onclose = () => { dbPromise = null; };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
     req.onblocked = () => reject(new Error('IndexedDB upgrade blocked by another open tab.'));
   });
+  dbPromise = dbPromise.catch((error) => { dbPromise = null; throw error; });
   return dbPromise;
 }
 
@@ -44,7 +50,8 @@ export const CaptureStore = {
     const store = await tx(STORE, 'readwrite');
     return new Promise((resolve, reject) => {
       const req = store.add(capture);
-      req.onsuccess = () => resolve(capture);
+      store.transaction.oncomplete = () => resolve(capture);
+      store.transaction.onabort = () => reject(store.transaction.error || new Error('Capture was not saved. Retry after freeing local storage.'));
       req.onerror = () => reject(req.error);
     });
   },
@@ -52,13 +59,14 @@ export const CaptureStore = {
   async update(id, patch) {
     const store = await tx(STORE, 'readwrite');
     return new Promise((resolve, reject) => {
+      store.transaction.onabort = () => reject(store.transaction.error || new Error('Capture update was not saved.'));
       const getReq = store.get(id);
       getReq.onsuccess = () => {
         const existing = getReq.result;
         if (!existing) return reject(new Error('Capture not found: ' + id));
-        const merged = { ...existing, ...patch };
+        const merged = { ...existing, ...patch, id: existing.id };
         const putReq = store.put(merged);
-        putReq.onsuccess = () => resolve(merged);
+        store.transaction.oncomplete = () => resolve(merged);
         putReq.onerror = () => reject(putReq.error);
       };
       getReq.onerror = () => reject(getReq.error);
@@ -78,7 +86,8 @@ export const CaptureStore = {
     const store = await tx(STORE, 'readwrite');
     return new Promise((resolve, reject) => {
       const req = store.delete(id);
-      req.onsuccess = () => resolve(true);
+      store.transaction.oncomplete = () => resolve(true);
+      store.transaction.onabort = () => reject(store.transaction.error || new Error('Local storage operation was not committed.'));
       req.onerror = () => reject(req.error);
     });
   },
@@ -93,15 +102,29 @@ export const CaptureStore = {
   },
 
   async getRecent(limit = 4) {
-    const all = await this.getAll();
-    return all.slice(0, limit);
+    if (!Number.isInteger(limit) || limit < 0) throw new Error('Recent capture limit must be a non-negative integer.');
+    if (limit === 0) return [];
+    const store = await tx(STORE, 'readonly');
+    return new Promise((resolve, reject) => {
+      const items = [];
+      const req = store.index('createdAt').openCursor(null, 'prev');
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor || items.length >= limit) return resolve(items);
+        items.push(cursor.value);
+        if (items.length === limit) resolve(items);
+        else cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
   },
 
   async clear() {
     const store = await tx(STORE, 'readwrite');
     return new Promise((resolve, reject) => {
       const req = store.clear();
-      req.onsuccess = () => resolve(true);
+      store.transaction.oncomplete = () => resolve(true);
+      store.transaction.onabort = () => reject(store.transaction.error || new Error('Local storage operation was not committed.'));
       req.onerror = () => reject(req.error);
     });
   }
@@ -111,15 +134,19 @@ export const CaptureStore = {
 // This is fine for chrome.storage.local since it's tiny text data.
 export const ConfigStore = {
   async get(key, fallback = null) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       chrome.storage.local.get([key], (result) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
         resolve(key in result ? result[key] : fallback);
       });
     });
   },
   async set(key, value) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [key]: value }, () => resolve(true));
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set({ [key]: value }, () => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(true);
+      });
     });
   }
 };

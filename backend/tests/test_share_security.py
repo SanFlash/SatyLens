@@ -76,3 +76,8 @@ def test_token_within_ttl_still_verifies():
     token = generate_download_token("share-abc", "secret", ttl_seconds=5)
     time.sleep(0.1)
     assert verify_download_token("share-abc", token, "secret") is True
+
+
+def test_invalid_hex_and_hash_lengths_fail_closed():
+    for value in ["zz$aa", "aa$zz", "$", "00$00", None, 123]:
+        assert verify_password("anything", value) is False

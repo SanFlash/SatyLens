@@ -70,12 +70,17 @@ async function getOrCreateClientId() {
   return id;
 }
 
-/** Exposes the same anonymous ID used for telemetry, for reuse anywhere
- * else in the extension that wants a stable-but-anonymous identifier —
- * e.g. scoping "my recent R2 share links" (see shared/r2.js) without
- * inventing a second identity system. */
+/** Legacy export name retained for callers. Returns the stable anonymous
+ * sharing-installation scope, initialized from the existing analytics identity.
+ * Telemetry resets rotate analytics identity without orphaning link history. */
 export async function getAnalyticsClientId() {
-  return getOrCreateClientId();
+  // Preserve the legacy history scope independently of telemetry resets.
+  let id = await ConfigStore.get('sharingInstallationId', null);
+  if (!id) {
+    id = await getOrCreateClientId();
+    await ConfigStore.set('sharingInstallationId', id);
+  }
+  return id;
 }
 
 /* ============================== Opt-out ============================== */
@@ -85,12 +90,20 @@ export async function isAnalyticsEnabled() {
 }
 
 export async function setAnalyticsEnabled(enabled) {
-  return ConfigStore.set('analyticsEnabled', !!enabled);
+  await ConfigStore.set('analyticsEnabled', !!enabled);
+  if (!enabled) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+    memoryQueue = [];
+    await ConfigStore.set('analyticsQueue', []);
+  }
+  return true;
 }
 
 /** Clears any locally buffered/queued telemetry and starts a fresh
  * anonymous identity — the "Clear local telemetry data" Settings action. */
 export async function clearLocalTelemetryData() {
+  await getAnalyticsClientId(); // migrate existing share-history identity before rotation
   memoryQueue = [];
   await ConfigStore.set('analyticsQueue', []);
   await ConfigStore.set('analyticsSessionId', null);
@@ -171,7 +184,7 @@ function trackRaw(eventType, ctx, sessionId, details) {
     feature: details.feature ?? null,
     action: details.action ?? null,
     success: details.success !== undefined ? !!details.success : true,
-    error_message: details.error ? String(details.error).slice(0, 500) : null,
+    error_message: details.error ? 'operation_failed' : null,
     duration_ms: details.durationMs ?? null,
     timestamp: new Date().toISOString()
   };
@@ -199,6 +212,11 @@ function scheduleFlush() {
  * so a thrown fetch error still leaves the queue intact for retry). */
 export async function flush() {
   try {
+    if (!(await isAnalyticsEnabled())) {
+      memoryQueue = [];
+      await ConfigStore.set('analyticsQueue', []);
+      return;
+    }
     const persisted = await ConfigStore.get('analyticsQueue', []);
     const batch = [...persisted, ...memoryQueue].slice(0, MAX_QUEUED_EVENTS);
     memoryQueue = [];
@@ -209,7 +227,7 @@ export async function flush() {
     await ConfigStore.set('analyticsQueue', batch);
 
     const base = await getApiBaseUrl();
-    const toSend = batch.slice(0, MAX_BATCH_SIZE);
+    const toSend = batch.slice(0, MAX_BATCH_SIZE).map((event) => ({ ...event, error_message: event.error_message ? 'operation_failed' : null }));
     const remaining = batch.slice(MAX_BATCH_SIZE);
 
     const res = await fetch(`${base}/api/events`, {

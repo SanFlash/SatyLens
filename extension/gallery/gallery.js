@@ -502,7 +502,11 @@ function openModal(capture) {
   if (capture.type === 'recording' && capture.duration) {
     metaLines.push(`Duration: ${formatDuration(capture.duration)}`);
   }
-  $('#modalMeta').innerHTML = metaLines.map((l) => `<div>${l}</div>`).join('');
+  $('#modalMeta').replaceChildren(...metaLines.map((line) => {
+    const item = document.createElement('div');
+    item.textContent = line;
+    return item;
+  }));
   renderModalTags();
 
   const uploadStatus = $('#modalUploadStatus');
@@ -536,7 +540,12 @@ function renderModalTags() {
   for (const tag of tags) {
     const chip = document.createElement('span');
     chip.className = 'cf-tag-chip-removable';
-    chip.innerHTML = `#${tag} <button aria-label="Remove tag">✕</button>`;
+    chip.append(document.createTextNode(`#${tag} `));
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.setAttribute('aria-label', `Remove tag ${tag}`);
+    removeButton.textContent = '✕';
+    chip.appendChild(removeButton);
     chip.querySelector('button').addEventListener('click', () => removeTagFromActiveCapture(tag));
     container.appendChild(chip);
   }
@@ -749,7 +758,9 @@ async function openLinkHistory() {
     for (const item of items) list.appendChild(buildLinkHistoryItem(item));
   } catch (err) {
     console.error(err);
-    list.innerHTML = `<div class="cf-empty"><p>${err.message || 'Could not load link history.'}</p></div>`;
+    const error = document.createElement('p');
+    error.textContent = err.message || 'Could not load link history. Retry when the connection is available.';
+    list.replaceChildren(error);
   }
 }
 
