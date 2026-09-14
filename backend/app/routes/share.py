@@ -192,8 +192,8 @@ def delete_share(share_id: str):
     if row.get("storage_provider") == "r2":
         try:
             r2_storage.delete_object(row["storage_path"])
-        except Exception:  # noqa: BLE001 — DB row removal still proceeds below
-            pass
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Cloud storage could not delete this file. Its share record is preserved; retry deletion when storage is available.") from exc
     delete_capture_row(share_id)
     return {"success": True, "deleted": share_id}
 

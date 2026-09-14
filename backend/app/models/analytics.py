@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ClientContext(BaseModel):
@@ -44,6 +44,12 @@ class EventIn(ClientContext):
     error_message: Optional[str] = Field(default=None, max_length=500)
     duration_ms: Optional[int] = Field(default=None, ge=0, le=3_600_000)
     timestamp: Optional[datetime] = None
+
+    @field_validator("error_message", mode="before")
+    @classmethod
+    def redact_error_message(cls, value):
+        # Older clients may send URLs, signed credentials or filenames in errors.
+        return "operation_failed" if value else None
 
 
 class EventBatchRequest(BaseModel):

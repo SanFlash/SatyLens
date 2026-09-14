@@ -1,5 +1,7 @@
 # SatyLens
 
+> Upgrade branch: initial hardening only, not the SatyLens 2.0 release. See [audit and release gates](docs/SATYLENS_2_AUDIT.md) and [verification / rollout](docs/HARDENING_CHECKPOINT.md). Analytics reporting now requires `ANALYTICS_DASHBOARD_TOKEN`; leaving it blank disables reporting.
+
 Capture. Record. Share. — a Chrome extension (Manifest V3) for screenshots
 and screen recordings, with a FastAPI + Supabase backend for generating
 public shareable links.

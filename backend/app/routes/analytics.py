@@ -8,16 +8,12 @@ blocking requirement" for the extension's own telemetry -- the extension
 must never be blocked from working because analytics is unreachable or
 unauthenticated.
 
-Reporting endpoints (/api/analytics/*) are a different story: they return
-aggregated data about every installation, which is exactly the kind of
-thing that shouldn't sit wide open on the public internet. They're gated
-by an optional shared token (ANALYTICS_DASHBOARD_TOKEN in .env) -- if you
-leave that unset, the endpoints stay open (matching the letter of "no
-auth requirement"), but setting it is strongly recommended for anything
-beyond local development. This is a deliberate, documented deviation
-toward safer defaults, not a silent one.
+Reporting endpoints fail closed unless ANALYTICS_DASHBOARD_TOKEN is configured
+and the request supplies the matching X-Analytics-Token header.
 """
 from __future__ import annotations
+
+import secrets
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 
@@ -36,8 +32,8 @@ settings = get_settings()
 def _require_dashboard_access(x_analytics_token: str | None) -> None:
     token = getattr(settings, "ANALYTICS_DASHBOARD_TOKEN", "")
     if not token:
-        return  # no token configured -> reporting endpoints are open
-    if x_analytics_token != token:
+        raise HTTPException(status_code=503, detail="Analytics reporting is disabled. Configure ANALYTICS_DASHBOARD_TOKEN on the server.")
+    if not x_analytics_token or not secrets.compare_digest(x_analytics_token.encode(), token.encode()):
         raise HTTPException(status_code=401, detail="Missing or invalid analytics dashboard token.")
 
 

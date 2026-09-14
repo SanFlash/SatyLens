@@ -48,6 +48,20 @@ create table if not exists public.captures (
   password_hash text
 );
 
+-- Migration safety net: if you already ran an earlier version of this
+-- file against an existing project, `create table if not exists` above
+-- was a no-op and your table won't have the new columns yet. These
+-- statements are themselves idempotent (IF NOT EXISTS), so it's always
+-- safe to just re-run this whole file.
+alter table public.captures add column if not exists storage_provider text not null default 'supabase';
+alter table public.captures add column if not exists status text not null default 'complete';
+alter table public.captures add column if not exists revoked boolean not null default false;
+alter table public.captures add column if not exists view_count integer not null default 0;
+alter table public.captures add column if not exists download_count integer not null default 0;
+alter table public.captures add column if not exists client_id text;
+alter table public.captures add column if not exists password_hash text;
+
+
 -- Fast lookups by share_id (used on every GET /api/share/{id} and /s/{id}).
 create index if not exists idx_captures_share_id on public.captures (share_id);
 
@@ -63,19 +77,6 @@ create index if not exists idx_captures_client_id on public.captures (client_id)
 -- tab closed mid-upload and /api/media/complete never got called).
 create index if not exists idx_captures_status on public.captures (status)
   where status = 'pending';
-
--- Migration safety net: if you already ran an earlier version of this
--- file against an existing project, `create table if not exists` above
--- was a no-op and your table won't have the new columns yet. These
--- statements are themselves idempotent (IF NOT EXISTS), so it's always
--- safe to just re-run this whole file.
-alter table public.captures add column if not exists storage_provider text not null default 'supabase';
-alter table public.captures add column if not exists status text not null default 'complete';
-alter table public.captures add column if not exists revoked boolean not null default false;
-alter table public.captures add column if not exists view_count integer not null default 0;
-alter table public.captures add column if not exists download_count integer not null default 0;
-alter table public.captures add column if not exists client_id text;
-alter table public.captures add column if not exists password_hash text;
 
 -- Re-apply constraints too, in case this table predates them (e.g. the
 -- 'collage' type, or the provider/status allow-lists). Drop-then-add is

@@ -28,9 +28,8 @@ class Settings(BaseSettings):
     EXTRA_CORS_ORIGINS: str = ""
     ALLOWED_EXTENSION_ORIGINS: str = ""
 
-    # Optional shared token gating the /api/analytics/* reporting endpoints
-    # (dashboard + drill-down views). Leave unset for fully open access
-    # during local development; set it before deploying anywhere public.
+    # Required shared token for /api/analytics/* reporting endpoints.
+    # Unset disables reporting (HTTP 503); no public-reporting fallback.
     # Ingestion endpoints (/api/events, /api/session/*) never needs this.
     ANALYTICS_DASHBOARD_TOKEN: str = ""
 

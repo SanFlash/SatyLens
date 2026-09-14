@@ -174,7 +174,10 @@ def fake_db(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setattr(settings, "SUPABASE_SERVICE_ROLE_KEY", "fake-key")
+    monkeypatch.setattr(settings, "ANALYTICS_DASHBOARD_TOKEN", "test-dashboard-token")
+    client.headers["X-Analytics-Token"] = "test-dashboard-token"
     yield fake_client
+    client.headers.pop("X-Analytics-Token", None)
 
 
 def base_ctx(client_id="client-00000001", version="1.2.0"):
@@ -336,6 +339,7 @@ def test_dashboard_token_gates_reporting_endpoints_but_not_ingestion(fake_db, mo
     res = client.post("/api/session/start", json={**base_ctx(), "session_id": "session-0000xx"})
     assert res.status_code == 200
 
+    client.headers.pop("X-Analytics-Token", None)
     # Reporting endpoints reject missing/wrong token...
     res = client.get("/api/analytics/overview")
     assert res.status_code == 401
@@ -347,9 +351,10 @@ def test_dashboard_token_gates_reporting_endpoints_but_not_ingestion(fake_db, mo
     assert res.status_code == 200
 
 
-def test_reporting_endpoints_open_when_no_token_configured(fake_db):
+def test_reporting_endpoints_closed_when_no_token_configured(fake_db, monkeypatch):
+    monkeypatch.setattr(analytics_route.settings, "ANALYTICS_DASHBOARD_TOKEN", "")
     res = client.get("/api/analytics/overview")
-    assert res.status_code == 200
+    assert res.status_code == 503
 
 
 def test_resolve_country_reads_known_headers_only():

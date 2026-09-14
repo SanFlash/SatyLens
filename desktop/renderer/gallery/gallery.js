@@ -224,7 +224,11 @@ function openModal(capture) {
   if (capture.type === 'recording' && capture.duration) {
     metaLines.push(`Duration: ${formatDuration(capture.duration)}`);
   }
-  $('#modalMeta').innerHTML = metaLines.map((l) => `<div>${l}</div>`).join('');
+  $('#modalMeta').replaceChildren(...metaLines.map((line) => {
+    const item = document.createElement('div');
+    item.textContent = line;
+    return item;
+  }));
 
   const uploadStatus = $('#modalUploadStatus');
   const shareResult = $('#mShareResult');
@@ -416,7 +420,9 @@ async function openLinkHistory() {
     for (const item of items) list.appendChild(buildLinkHistoryItem(item));
   } catch (err) {
     console.error(err);
-    list.innerHTML = `<div class="cf-empty"><p>${err.message || 'Could not load link history.'}</p></div>`;
+    const error = document.createElement('p');
+    error.textContent = err.message || 'Could not load link history. Retry when the connection is available.';
+    list.replaceChildren(error);
   }
 }
 
